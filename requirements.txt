@@ -1,0 +1,5 @@
+pypdf
+pydantic
+python-dotenv
+openai
+python-docx

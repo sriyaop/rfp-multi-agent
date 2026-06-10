@@ -1,0 +1,17 @@
+.next/
+node_modules/
+out/
+*.log
+.env
+output/
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.tsbuildinfo
+debug_output.txt
+dev-server.log
+.DS_Store
+Thumbs.db
