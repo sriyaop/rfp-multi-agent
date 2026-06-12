@@ -25,8 +25,22 @@ export class CostEstimationAgent extends BaseAgent<CostPlan> {
       state.outputs.resourcePlanning
         ?.findings as ResourcePlan;
 
+    const intelligence =
+      (state.rfp as any)
+        .intelligence;
+
+    const complexity =
+      intelligence?.complexity;
+
+    const rate =
+      complexity === "High"
+        ? 18000
+        : complexity === "Medium"
+        ? 14000
+        : 10000;
+
     const developmentCost =
-      resource.effortPersonMonths * 12000;
+      resource.effortPersonMonths * rate;
 
     const infrastructureCost =
       Math.max(
@@ -85,7 +99,7 @@ export class CostEstimationAgent extends BaseAgent<CostPlan> {
         ],
 
         pricingAssumptions: [
-          "$12k per person-month"
+          `$${rate.toLocaleString()} per person-month`
         ],
 
         paymentMilestones: [

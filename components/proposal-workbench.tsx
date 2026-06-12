@@ -142,19 +142,6 @@ export function ProposalWorkbench() {
 
           {result && (
             <>
-              {resultItems.length > 1 && result.comparison && (
-                <div className="panel">
-                  <h2>Comparative Summary</h2>
-                  <ul className="list">
-                    {result.comparison.map((comparison) => (
-                      <li key={comparison.fileName}>
-                        <strong>{comparison.fileName}:</strong> Budget {usd(comparison.budget)}, Duration {comparison.durationWeeks} weeks, Recommendation {comparison.bidRecommendation}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
               {resultItems.map((item, index) => (
                 <div key={item.fileName} className="panel stack">
                   <h2>{item.rfp.projectName}</h2>

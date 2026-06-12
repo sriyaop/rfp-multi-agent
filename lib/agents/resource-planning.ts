@@ -29,18 +29,28 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
       state.outputs.cto
         ?.findings as TechnicalPlan;
 
-    const featureCount =
-      product.features.length;
+    const intelligence =
+      (state.rfp as any)
+        .intelligence;
 
-    const integrationCount =
-      technical.integrations.length;
+    const recommendedSize =
+      intelligence?.recommendedTeamSize;
 
     let teamComposition;
 
-    if (
-      featureCount > 15 ||
-      integrationCount > 3
-    ) {
+    if (recommendedSize >= 12) {
+
+      teamComposition = [
+        { role: "Project Manager", fte: 1, months: 12 },
+        { role: "Solution Architect", fte: 2, months: 10 },
+        { role: "Senior Developer", fte: 5, months: 12 },
+        { role: "QA Engineer", fte: 3, months: 10 },
+        { role: "DevOps Engineer", fte: 2, months: 8 }
+      ];
+
+    }
+    else if (recommendedSize >= 8) {
+
       teamComposition = [
         { role: "Project Manager", fte: 1, months: 8 },
         { role: "Solution Architect", fte: 1, months: 6 },
@@ -48,12 +58,16 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
         { role: "QA Engineer", fte: 2, months: 6 },
         { role: "DevOps Engineer", fte: 1, months: 4 }
       ];
-    } else {
+
+    }
+    else {
+
       teamComposition = [
         { role: "Project Manager", fte: 1, months: 6 },
         { role: "Developer", fte: 2, months: 6 },
         { role: "QA Engineer", fte: 1, months: 4 }
       ];
+
     }
 
     const totalFte =

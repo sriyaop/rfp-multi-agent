@@ -63,9 +63,11 @@ ${userPrompt}
 
         lastError = error;
 
-        console.log(
+        console.error(
           `Gemini attempt ${attempt} failed`
         );
+
+        console.error(error);
 
         if (attempt < 3) {
 

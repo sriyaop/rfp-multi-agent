@@ -31,18 +31,20 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
       state.outputs.resourcePlanning
         ?.findings as ResourcePlan;
 
-    const featureCount =
-      product.features.length;
+    const intelligence =
+      (state.rfp as any)
+        .intelligence;
 
-    let durationWeeks = 12;
+    let durationWeeks =
+      intelligence?.recommendedTimelineWeeks
+      ?? 24;
 
-    if (featureCount > 10) {
-      durationWeeks = 20;
-    }
+    durationWeeks =
+      Math.max(
+        12,
+        durationWeeks
+      );
 
-    if (featureCount > 15) {
-      durationWeeks = 28;
-    }
 
     const phases = [
       {
@@ -76,7 +78,7 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
       confidence: 0.94,
 
       assumptions: [
-        "Timeline based on feature count."
+        "Timeline based on AI project complexity analysis."
       ],
 
       findings: {

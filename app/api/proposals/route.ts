@@ -6,6 +6,9 @@ import { extractTextFromFile } from "@/lib/document/extractor";
 import { analyzeRfpText } from "@/lib/document/extractor";
 import { renderMarkdown } from "@/lib/proposal/markdown";
 import { renderPdf } from "@/lib/proposal/pdf";
+import {
+  analyzeRfpWithAi
+} from "@/lib/ai/rfp-analyzer";
 
 export const runtime = "nodejs";
 
@@ -28,7 +31,31 @@ export async function POST(request: Request) {
 
     const rawText = await extractTextFromFile(file);
     const text = await extractTextFromFile(file);
-    const rfp = analyzeRfpText(text);
+    const rfp =
+      analyzeRfpText(text);
+
+    try {
+
+      const intelligence =
+        await analyzeRfpWithAi(
+          rawText
+        );
+
+      console.log(
+          "AI INTELLIGENCE SUCCESS",
+          intelligence
+      );
+
+      (rfp as any).intelligence =
+        intelligence;
+
+    }
+    catch (error) {
+
+      console.log(
+        "Gemini unavailable. Falling back."
+      );
+    }
 
     const proposal = await new ProposalOrchestrator().run(
       rfp as any
