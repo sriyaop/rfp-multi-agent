@@ -1,6 +1,4 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { GeminiClient } from "@/lib/ai/gemini";
-import { CTO_PROMPT } from "@/lib/agents/prompts";
 
 import {
   AgentOutput,
@@ -9,8 +7,6 @@ import {
 } from "@/lib/types";
 
 export class CTOAgent extends BaseAgent<TechnicalPlan> {
-
-  private readonly llm = new GeminiClient();
 
   constructor() {
     super(
@@ -23,104 +19,102 @@ export class CTOAgent extends BaseAgent<TechnicalPlan> {
     state: WorkflowState
   ): Promise<AgentOutput<TechnicalPlan>> {
 
-    const productOutput =
-      state.outputs.productManager?.findings;
+    const requirementsText =
+      JSON.stringify(
+        state.rfp.technicalRequirements
+      ).toLowerCase();
 
-    const result =
-      await this.llm.generateJson<TechnicalPlan>(
-        CTO_PROMPT,
-        `
-CLIENT:
-${state.rfp.clientName}
+    const mobile =
+      requirementsText.includes("mobile");
 
-PROJECT:
-${state.rfp.projectName}
-
-EXECUTIVE SUMMARY:
-${state.rfp.executiveSummary}
-
-BUSINESS OBJECTIVES:
-${JSON.stringify(
-  state.rfp.businessObjectives,
-  null,
-  2
-)}
-
-FUNCTIONAL REQUIREMENTS:
-${JSON.stringify(
-  state.rfp.functionalRequirements,
-  null,
-  2
-)}
-
-TECHNICAL REQUIREMENTS:
-${JSON.stringify(
-  state.rfp.technicalRequirements,
-  null,
-  2
-)}
-
-DELIVERABLES:
-${JSON.stringify(
-  state.rfp.deliverables,
-  null,
-  2
-)}
-
-RISKS:
-${JSON.stringify(
-  state.rfp.risks,
-  null,
-  2
-)}
-
-PM OUTPUT:
-${JSON.stringify(
-  productOutput,
-  null,
-  2
-)}
-
-Generate:
-
-{
-  "techStack": [],
-  "architecture": [],
-  "integrations": [],
-  "scalability": [],
-  "technicalRisks": []
-}
-
-IMPORTANT:
-
-Architecture must be enterprise-grade.
-
-Include:
-
-- frontend
-- backend
-- database
-- security
-- hosting
-- integrations
-- monitoring
-
-Return JSON only.
-`
+    const integrations =
+      state.rfp.technicalRequirements.filter(
+        item =>
+          item.toLowerCase().includes("api") ||
+          item.toLowerCase().includes("integration")
       );
+
+    const techStack = [
+      "Next.js",
+      "TypeScript",
+      "Node.js",
+      "PostgreSQL"
+    ];
+
+    if (mobile) {
+      techStack.push("React Native");
+    }
 
     return {
       agent: this.role,
 
       title: this.displayName,
 
-      confidence: 0.94,
+      confidence: 0.96,
 
       assumptions: [
-        "Architecture generated from complete RFP analysis."
+        "Architecture generated from RFP requirements."
       ],
 
-      findings: result,
+      findings: {
+        architectureOverview:
+          "Layered enterprise architecture with frontend, backend APIs, database and integrations.",
+
+        frontendArchitecture: [
+          "Next.js Application",
+          "Responsive UI",
+          "Role Based Access"
+        ],
+
+        backendArchitecture: [
+          "REST APIs",
+          "Business Services Layer",
+          "Validation Layer"
+        ],
+
+        databaseArchitecture: [
+          "PostgreSQL",
+          "Relational Data Model",
+          "Backup Strategy"
+        ],
+
+        securityArchitecture: [
+          "Authentication",
+          "Authorization",
+          "Audit Logging"
+        ],
+
+        deploymentArchitecture: [
+          "Cloud Hosting",
+          "CI/CD Pipeline"
+        ],
+
+        integrations,
+
+        monitoringStrategy: [
+          "Application Monitoring",
+          "Error Tracking",
+          "Audit Logs"
+        ],
+
+        techStack,
+
+        scalabilityStrategy: [
+          "Horizontal Scaling",
+          "API Layer Separation"
+        ],
+
+        technicalRisks: [
+          "Integration complexity",
+          "Requirement volatility"
+        ],
+
+        architectureRationale: [
+          "Supports future growth",
+          "Reduces operational risk",
+          "Improves maintainability"
+        ]
+      },
 
       reviewNotes: []
     };

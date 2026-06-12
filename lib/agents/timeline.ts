@@ -1,5 +1,4 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { GeminiClient } from "@/lib/ai/gemini";
 
 import {
   AgentOutput,
@@ -12,8 +11,6 @@ import {
 import { dateAfterWeeks } from "@/lib/utils";
 
 export class TimelineAgent extends BaseAgent<TimelinePlan> {
-
-  private readonly llm = new GeminiClient();
 
   constructor() {
     super(
@@ -34,76 +31,70 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
       state.outputs.resourcePlanning
         ?.findings as ResourcePlan;
 
-    const result =
-      await this.llm.generateJson<{
-        durationWeeks: number;
-        phases: Array<{
-          name: string;
-          weeks: number;
-          output: string;
-        }>;
-        milestones: string[];
-      }>(
-        `
-You are a Senior Program Manager.
+    const featureCount =
+      product.features.length;
 
-Create a realistic delivery timeline.
+    let durationWeeks = 12;
 
-Return JSON only.
-`,
-        `
-PROJECT:
-${state.rfp.projectName}
+    if (featureCount > 10) {
+      durationWeeks = 20;
+    }
 
-TIMELINE INFORMATION:
-${JSON.stringify(
-  state.rfp.timelineInformation,
-  null,
-  2
-)}
+    if (featureCount > 15) {
+      durationWeeks = 28;
+    }
 
-PRODUCT PLAN:
-${JSON.stringify(
-  product,
-  null,
-  2
-)}
-
-RESOURCE PLAN:
-${JSON.stringify(
-  resource,
-  null,
-  2
-)}
-
-Generate:
-
-{
- "durationWeeks": 0,
- "phases": [],
- "milestones": []
-}
-`
-      );
+    const phases = [
+      {
+        name: "Discovery",
+        weeks: 2,
+        output: "Requirements Baseline"
+      },
+      {
+        name: "Architecture",
+        weeks: 3,
+        output: "Solution Design"
+      },
+      {
+        name: "Implementation",
+        weeks:
+          durationWeeks - 8,
+        output: "Working Product"
+      },
+      {
+        name: "Testing & Go Live",
+        weeks: 3,
+        output: "Production Release"
+      }
+    ];
 
     return {
       agent: this.role,
 
       title: this.displayName,
 
-      confidence: 0.92,
+      confidence: 0.94,
 
       assumptions: [
-        "Generated from staffing and scope analysis."
+        "Timeline based on feature count."
       ],
 
       findings: {
-        ...result,
+        durationWeeks,
 
         estimatedCompletionDate:
           dateAfterWeeks(
-            result.durationWeeks
-          )
+            durationWeeks
+          ),
+
+        phases,
+
+        milestones: [
+          "Requirements Approved",
+          "Architecture Approved",
+          "Build Complete",
+          "Go Live"
+        ]
       },
 
       reviewNotes: []

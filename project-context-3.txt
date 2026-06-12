@@ -1,10 +1,266 @@
-"use client";
+
+=====================================================
+FILE: lib\proposal\builder.ts
+=====================================================
 
 import {
-  useEffect,
-  useMemo,
-  useState
-} from "react";import { Download, FileText, Loader2, ShieldCheck, Upload } from "lucide-react";
+  ComplianceItem,
+  CostPlan,
+  ProductPlan,
+  Proposal,
+  ResourcePlan,
+  RiskPlan,
+  TechnicalPlan,
+  TimelinePlan,
+  WorkflowState
+} from "@/lib/types";
+
+import { calculateRoi } from "@/lib/proposal/roi";
+import {
+  calculateConfidence,
+  runConsistencyChecks
+} from "@/lib/validation/consistency";
+
+import { usd } from "@/lib/utils";
+
+export function buildProposal(
+  state: WorkflowState
+): Proposal {
+
+  const product =
+    state.outputs.productManager
+      ?.findings as ProductPlan;
+
+  const technical =
+    state.outputs.cto
+      ?.findings as TechnicalPlan;
+
+  const resource =
+    state.outputs.resourcePlanning
+      ?.findings as ResourcePlan;
+
+  const cost =
+    state.outputs.costEstimation
+      ?.findings as CostPlan;
+
+  const timeline =
+    state.outputs.timeline
+      ?.findings as TimelinePlan;
+
+  const risk =
+    state.outputs.risk
+      ?.findings as RiskPlan;
+
+  const confidenceScore =
+    calculateConfidence(state);
+
+  const consistencyChecks =
+    runConsistencyChecks(state);
+
+  const complianceMatrix: ComplianceItem[] =
+    state.rfp.functionalRequirements
+      .slice(0, 15)
+      .map((requirement) => ({
+        requirement,
+        status: "Covered",
+        owner: "Delivery Team",
+        notes:
+          "Addressed through proposed solution."
+      }));
+
+  const architectureDiagram = `
+graph TD
+
+Client
+ --> Frontend
+
+Frontend
+ --> API
+
+API
+ --> Services
+
+Services
+ --> Database
+
+Services
+ --> Integrations
+
+Services
+ --> Monitoring
+`;
+
+  const executiveSummary =
+    `
+This proposal outlines our recommended approach for delivering ${state.rfp.projectName} for ${state.rfp.clientName}.
+
+The proposed solution aligns with the client's business objectives, technical requirements, timeline expectations and evaluation criteria while minimizing implementation risk.
+`;
+
+  const clientUnderstanding =
+    `
+The client seeks a solution capable of meeting stated functional and technical requirements while maintaining scalability, security, maintainability and operational efficiency.
+
+Key objectives include:
+
+${state.rfp.businessObjectives
+  .map((item) => `• ${item}`)
+  .join("\n")}
+`;
+
+  const proposedSolution =
+    `
+Our proposed solution combines:
+
+${product.features
+  .slice(0, 10)
+  .map((item) => `• ${item}`)
+  .join("\n")}
+
+supported by an enterprise-grade architecture, structured delivery methodology and dedicated implementation team.
+`;
+
+  const implementationMethodology =
+    `
+The project will be executed using an agile delivery framework.
+
+Phases include:
+
+${timeline.phases
+  .map(
+    phase =>
+      `• ${phase.name} (${phase.weeks} weeks)`
+  )
+  .join("\n")}
+`;
+
+  const bidRecommendation =
+    `
+GO
+
+Reasoning:
+
+• Strong solution fit
+
+• Manageable delivery risks
+
+• Realistic staffing model
+
+• Budget aligns with scope
+
+• Architecture supports long-term scalability
+`;
+
+  const assumptions = [
+    ...product.assumptions
+  ];
+
+  const conclusion =
+    `
+This proposal presents a realistic and scalable delivery approach capable of meeting the client's requirements while balancing cost, timeline and implementation risk.
+`;
+
+  const finalProposal = `
+EXECUTIVE SUMMARY
+
+${executiveSummary}
+
+CLIENT UNDERSTANDING
+
+${clientUnderstanding}
+
+PROPOSED SOLUTION
+
+${proposedSolution}
+
+IMPLEMENTATION APPROACH
+
+${implementationMethodology}
+
+TECHNICAL ARCHITECTURE
+
+${technical.architectureOverview}
+
+RESOURCE PLAN
+
+${resource.totalFte} FTE
+
+${resource.effortPersonMonths} Person Months
+
+TIMELINE
+
+${timeline.durationWeeks} Weeks
+
+BUDGET
+
+${usd(cost.totalBudget)}
+
+CONCLUSION
+
+${conclusion}
+`;
+
+  return {
+    executiveSummary,
+
+    clientUnderstanding,
+
+    proposedSolution,
+
+    implementationMethodology,
+
+    bidRecommendation,
+
+    resourcePlan: resource,
+
+    costEstimate: cost,
+
+    timeline,
+
+    technicalArchitecture: technical,
+
+    riskAssessment: risk,
+
+    complianceMatrix,
+
+    userStories:
+      product.userStories,
+
+    architectureDiagram,
+
+    assumptions,
+
+    conclusion,
+
+    finalProposal,
+
+    roi: calculateRoi(state),
+
+    consistencyChecks,
+
+    confidenceScore,
+
+    agentOutputs:
+      Object.values(
+        state.outputs
+      ),
+
+    reviewCycle:
+      state.reviews,
+
+    agentConversation:
+      state.messages
+  };
+}
+
+=====================================================
+FILE: components\proposal-workbench.tsx
+=====================================================
+
+"use client";
+
+import { useMemo, useState } from "react";
+import { Download, FileText, Loader2, ShieldCheck, Upload } from "lucide-react";
 import { Proposal, RfpAnalysis } from "@/lib/types";
 import { usd } from "@/lib/utils";
 
@@ -26,7 +282,7 @@ export function ProposalWorkbench() {
   const [result, setResult] = useState<ApiResult | null>(null);
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [visibleMessages, setVisibleMessages] = useState(0);
+
   const resultItems = result ? [result] : [];
 
   const markdownUrls = useMemo(() => {
@@ -67,37 +323,6 @@ export function ProposalWorkbench() {
     setResult(data);
     setIsGenerating(false);
   }
-
-  useEffect(() => {
-
-  if (!result) return;
-
-  setVisibleMessages(0);
-
-  const messages =
-    result.proposal.agentConversation;
-
-  let count = 0;
-
-  const timer =
-    setInterval(() => {
-
-      count++;
-
-      setVisibleMessages(count);
-
-      if (
-        count >= messages.length
-      ) {
-        clearInterval(timer);
-      }
-
-    }, 600);
-
-  return () =>
-    clearInterval(timer);
-
-}, [result]);
 
   return (
     <main className="app-shell">
@@ -185,126 +410,6 @@ export function ProposalWorkbench() {
                     <p>{item.proposal.bidRecommendation}</p>
                   </div>
 
-                  <div className="panel stack">
-                    <h2>Business Proposal Preview</h2>
-
-                    <div className="panel">
-                      <h3>Executive Summary</h3>
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.executiveSummary}
-                      </p>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Client Understanding</h3>
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.clientUnderstanding}
-                      </p>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Proposed Solution</h3>
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.proposedSolution}
-                      </p>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Architecture Overview</h3>
-                      <p>
-                        {item.proposal.technicalArchitecture.architectureOverview}
-                      </p>
-
-                      <ul className="list">
-                        {item.proposal.technicalArchitecture.techStack.map(
-                          (tech) => (
-                            <li key={tech}>{tech}</li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Implementation Methodology</h3>
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.implementationMethodology}
-                      </p>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Budget Summary</h3>
-
-                      <ul className="list">
-                        <li>
-                          Development:
-                          {" "}
-                          {usd(
-                            item.proposal.costEstimate.developmentCost
-                          )}
-                        </li>
-
-                        <li>
-                          Infrastructure:
-                          {" "}
-                          {usd(
-                            item.proposal.costEstimate.infrastructureCost
-                          )}
-                        </li>
-
-                        <li>
-                          Contingency:
-                          {" "}
-                          {usd(
-                            item.proposal.costEstimate.contingencyCost
-                          )}
-                        </li>
-
-                        <li>
-                          Total:
-                          {" "}
-                          {usd(
-                            item.proposal.costEstimate.totalBudget
-                          )}
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Risk Assessment</h3>
-
-                      <ul className="list">
-                        {item.proposal.riskAssessment.deliveryRisks.map(
-                          (risk) => (
-                            <li key={risk}>{risk}</li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Conclusion</h3>
-
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.conclusion}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="panel">
-                    <h2>Executive Proposal Document</h2>
-
-                    <pre
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        fontFamily: "inherit",
-                        lineHeight: 1.8,
-                        padding: 16
-                      }}
-                    >
-                      {item.proposal.finalProposal}
-                    </pre>
-                  </div>
-
                   <div className="button-row">
                     <a className="button secondary" href={markdownUrls[index]?.url} download={`${item.fileName}-proposal.md`}><Download size={16} /> Markdown</a>
                     <a className="button secondary" href={pdfUrls[index]?.url} download={`${item.fileName}-proposal.pdf`}><Download size={16} /> PDF</a>
@@ -322,7 +427,7 @@ export function ProposalWorkbench() {
                     <div className="panel">
                       <h3>Communication Log</h3>
                       <ul className="list">
-                        {item.proposal.agentConversation.slice(0, visibleMessages).map((message, messageIndex) => (
+                        {item.proposal.agentConversation.slice(0, 25).map((message, messageIndex) => (
                           <li key={`${message.from}-${message.to}-${messageIndex}`}>
                             <strong>{message.from}</strong>
                             {" → "}
@@ -360,7 +465,7 @@ export function ProposalWorkbench() {
 
                   {/* Real Agent Chat Panel - Add this block above Validation */}
                   <div className="panel">
-                    <h2><h2>Live Multi-Agent Execution Feed</h2></h2>
+                    <h2>Agent Collaboration Timeline</h2>
                     <div className="stack">
                       {item.proposal.agentConversation.map((message, idx) => (
                         <div key={`${message.from}-${idx}`} className="panel">

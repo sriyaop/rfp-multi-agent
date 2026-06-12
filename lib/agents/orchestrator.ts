@@ -3,9 +3,13 @@ import { CEOAgent } from "@/lib/agents/ceo";
 import { WorkflowMemory } from "@/lib/agents/workflow-memory";
 
 import {
+  CostPlan,
+  ProductPlan,
   Proposal,
+  ResourcePlan,
+  ReviewFinding,
   RfpAnalysis,
-  ReviewFinding
+  TimelinePlan
 } from "@/lib/types";
 
 export class ProposalOrchestrator {
@@ -29,7 +33,7 @@ export class ProposalOrchestrator {
     memory.addMessage(
       "ceo",
       "all",
-      `Initiating proposal analysis for ${rfp.projectName}.`
+      `Initiating proposal strategy for ${rfp.projectName}.`
     );
 
     const ceoOutput =
@@ -41,26 +45,14 @@ export class ProposalOrchestrator {
 
     memory.addMessage(
       "ceo",
-      "all",
-      "Reviewing project objectives, scope and delivery strategy."
-    );
-
-    memory.addMessage(
-      "ceo",
-      "all",
-      "Delegating analysis to specialist agents."
+      "productManager",
+      "Identify functional scope, business priorities and delivery objectives."
     );
 
     for (
       const role of
       ceoOutput.findings.delegationOrder
     ) {
-
-      memory.addMessage(
-        "ceo",
-        role,
-        `Please analyze your assigned domain and provide recommendations.`
-      );
 
       const output =
         await this.registry
@@ -71,78 +63,106 @@ export class ProposalOrchestrator {
         output
       );
 
-      memory.addMessage(
-        role,
-        "ceo",
-        `${output.title} completed analysis with ${Math.round(output.confidence * 100)}% confidence.`
-      );
+      switch (role) {
 
-      if (
-        Array.isArray(
-          (output.findings as any).features
-        )
-      ) {
-        memory.addMessage(
-          role,
-          "all",
-          `Identified ${
-            (output.findings as any).features.length
-          } primary features.`
-        );
-      }
+        case "productManager": {
 
-      if (
-        Array.isArray(
-          (output.findings as any).techStack
-        )
-      ) {
-        memory.addMessage(
-          role,
-          "all",
-          `Recommended ${
-            (output.findings as any).techStack.length
-          } technology components.`
-        );
-      }
+          const product =
+            output.findings as ProductPlan;
 
-      if (
-        (output.findings as any).totalBudget
-      ) {
-        memory.addMessage(
-          role,
-          "all",
-          `Estimated project budget: $${(
-            output.findings as any
-          ).totalBudget.toLocaleString()}.`
-        );
-      }
+          memory.addMessage(
+            "productManager",
+            "cto",
+            `Detected ${product.features.length} primary requirements requiring architecture review.`
+          );
 
-      if (
-        (output.findings as any)
-          .durationWeeks
-      ) {
-        memory.addMessage(
-          role,
-          "all",
-          `Estimated delivery duration: ${
-            (output.findings as any)
-              .durationWeeks
-          } weeks.`
-        );
-      }
+          memory.addMessage(
+            "productManager",
+            "ceo",
+            `Functional scope established across ${product.features.length} feature areas.`
+          );
 
-      if (
-        (output.findings as any)
-          .effortPersonMonths
-      ) {
-        memory.addMessage(
-          role,
-          "all",
-          `Estimated effort: ${
-            (output.findings as any)
-              .effortPersonMonths
-          } person months.`
-        );
+          break;
+        }
+
+        case "cto": {
+
+          const tech =
+            output.findings as any;
+
+          memory.addMessage(
+            "cto",
+            "ceo",
+            "Recommended layered enterprise architecture with API integration layer."
+          );
+
+          memory.addMessage(
+            "cto",
+            "resourcePlanning",
+            `Architecture requires ${tech.techStack.length} core technology components.`
+          );
+
+          break;
+        }
+
+        case "resourcePlanning": {
+
+          const resource =
+            output.findings as ResourcePlan;
+
+          memory.addMessage(
+            "resourcePlanning",
+            "ceo",
+            `Estimated staffing requirement of ${resource.totalFte} FTE and ${resource.effortPersonMonths} person-months.`
+          );
+
+          memory.addMessage(
+            "resourcePlanning",
+            "costEstimation",
+            "Resource allocation finalized for cost modelling."
+          );
+
+          break;
+        }
+
+        case "costEstimation": {
+
+          const cost =
+            output.findings as CostPlan;
+
+          memory.addMessage(
+            "costEstimation",
+            "ceo",
+            `Estimated project budget of $${cost.totalBudget.toLocaleString()}.`
+          );
+
+          break;
+        }
+
+        case "timeline": {
+
+          const timeline =
+            output.findings as TimelinePlan;
+
+          memory.addMessage(
+            "timeline",
+            "ceo",
+            `Initial schedule estimated at ${timeline.durationWeeks} weeks.`
+          );
+
+          break;
+        }
+
+        case "risk": {
+
+          memory.addMessage(
+            "risk",
+            "ceo",
+            "Reviewing delivery, technical and commercial risks."
+          );
+
+          break;
+        }
       }
     }
 
@@ -170,7 +190,7 @@ export class ProposalOrchestrator {
       );
 
       findings.forEach(
-        (finding) => {
+        finding => {
 
           memory.addMessage(
             finding.reviewer,
@@ -187,6 +207,55 @@ export class ProposalOrchestrator {
       );
     }
 
+    const timeline =
+      state.outputs.timeline
+        ?.findings as TimelinePlan;
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    if (
+      timeline &&
+      product &&
+      product.features.length > 10 &&
+      timeline.durationWeeks < 24
+    ) {
+
+      memory.addMessage(
+        "risk",
+        "timeline",
+        "Timeline appears aggressive given implementation complexity."
+      );
+
+      memory.addMessage(
+        "ceo",
+        "timeline",
+        "Please revise delivery assumptions and include contingency."
+      );
+
+      timeline.durationWeeks += 4;
+
+      timeline.estimatedCompletionDate =
+        new Date(
+          Date.now() +
+          timeline.durationWeeks *
+          7 *
+          24 *
+          60 *
+          60 *
+          1000
+        )
+          .toISOString()
+          .slice(0, 10);
+
+      memory.addMessage(
+        "timeline",
+        "ceo",
+        `Timeline revised to ${timeline.durationWeeks} weeks after risk review.`
+      );
+    }
+
     memory.addReviews(
       reviewFindings
     );
@@ -196,15 +265,14 @@ export class ProposalOrchestrator {
         reviewFindings
       );
 
-    for (
-      const decision of ceoDecisions
-    ) {
-      memory.addMessage(
-        "ceo",
-        "all",
-        decision
-      );
-    }
+    ceoDecisions.forEach(
+      decision =>
+        memory.addMessage(
+          "ceo",
+          "all",
+          decision
+        )
+    );
 
     for (
       const role of
@@ -239,10 +307,11 @@ export class ProposalOrchestrator {
       if (
         targeted.length > 0
       ) {
+
         memory.addMessage(
           role,
           "ceo",
-          `Updated output after review cycle (${targeted.length} revisions).`
+          `Updated analysis after review cycle (${targeted.length} findings addressed).`
         );
       }
     }
@@ -250,13 +319,13 @@ export class ProposalOrchestrator {
     memory.addMessage(
       "ceo",
       "all",
-      "Proposal generation completed."
+      "Proposal approved for final compilation."
     );
 
     memory.addMessage(
       "ceo",
       "all",
-      "Consolidating final proposal."
+      "Generating executive proposal package."
     );
 
     return this.ceo.consolidate(

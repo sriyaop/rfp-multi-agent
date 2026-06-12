@@ -38,60 +38,193 @@ export async function extractTextFromFile(file: File): Promise<string> {
 /**
  * Converts raw RFP text into a compact structured analysis for agent planning.
  */
-export function analyzeRfpText(text: string): RfpAnalysis {
-  const normalized = text.replace(/\r/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  const lines = normalized
-    .split(/\n|(?<=\.)\s+(?=[A-Z])/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 12);
+export function analyzeRfpText(
+  text: string
+): RfpAnalysis {
 
-  const pick = (pattern: RegExp, limit: number) =>
-    lines.filter((line) => pattern.test(line)).slice(0, limit);
+  const normalized =
+    text
+      .replace(/\r/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
 
-  const title = lines.find((line) => /rfp|request for proposal|proposal/i.test(line)) ?? lines[0] ?? "RFP Project";
-  const client = inferClientName(normalized);
+  const lines =
+    normalized
+      .split("\n")
+      .map(line => line.trim())
+      .filter(line => line.length > 20);
+
+  const title =
+    lines.find(
+      line =>
+        /rfp|request for proposal|proposal/i.test(
+          line
+        )
+    ) ??
+    lines[0] ??
+    "RFP Project";
+
+  const client =
+    inferClientName(
+      normalized
+    );
+
+  const meaningfulLines =
+    lines.filter(line => {
+
+      if (line.length < 25) {
+        return false;
+      }
+
+      if (line.length > 250) {
+        return false;
+      }
+
+      if (
+        /^[0-9.]+$/.test(line)
+      ) {
+        return false;
+      }
+
+      if (
+        /^[A-Z\s]{4,}$/.test(line)
+      ) {
+        return false;
+      }
+
+      if (
+        /(requirements?|deliverables?|scope|technical requirements|functional requirements)$/i.test(
+          line
+        )
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+  const requirements =
+    meaningfulLines
+      .filter(line =>
+        /must|shall|should|required|support|provide|allow|enable/i.test(
+          line
+        )
+      )
+      .slice(0, 25);
+
+  const objectives =
+    meaningfulLines
+      .filter(line =>
+        /objective|goal|business|outcome|purpose/i.test(
+          line
+        )
+      )
+      .slice(0, 10);
+
+  const deliverables =
+    meaningfulLines
+      .filter(line =>
+        /deliver|documentation|training|deployment|handover/i.test(
+          line
+        )
+      )
+      .slice(0, 12);
+
+  const risks =
+    meaningfulLines
+      .filter(line =>
+        /risk|challenge|dependency|delay|security|compliance/i.test(
+          line
+        )
+      )
+      .slice(0, 10);
+
+  const scope =
+    meaningfulLines
+      .filter(line =>
+        /application|platform|system|mobile|portal|dashboard|integration|backend|frontend/i.test(
+          line
+        )
+      )
+      .slice(0, 15);
 
   return {
     clientName: client,
-    projectName: cleanTitle(title),
-    executiveSummary: summarize(normalized), 
-    businessObjectives: toUniqueItems(pick(SECTION_PATTERNS.objectives, 8), [
-      "Deliver a solution aligned with the stated business objectives."
-    ]),
-    functionalRequirements: toUniqueItems(
-      pick(SECTION_PATTERNS.requirements, 18),
-      [
-        "Implement required functionality described in the RFP."
-      ]
-    ),
-    technicalRequirements: toUniqueItems(
-      pick(SECTION_PATTERNS.requirements, 18),
-      [
-        "Provide enterprise-grade architecture and integrations."
-      ]
-    ),
-    scopeItems: toUniqueItems(pick(SECTION_PATTERNS.scope, 12), [
-      "Discovery, design, development, testing, deployment, and operational handover."
-    ]),
-    constraints: toUniqueItems(pick(SECTION_PATTERNS.constraints, 10), [
-      "Timeline, budget, compliance, and stakeholder availability constraints."
-    ]),
-    deliverables: toUniqueItems(pick(/deliverables?|submission|documentation|training|deployment/i, 10), [
-      "Production-ready solution",
-      "Technical documentation",
-      "Deployment and handover package"
-    ]),
-    risks: toUniqueItems(pick(SECTION_PATTERNS.risks, 8), [
-      "Requirements ambiguity",
-      "Integration dependencies",
-      "Schedule compression"
-    ]),
+
+    projectName:
+      cleanTitle(title),
+
+    executiveSummary:
+      summarize(normalized),
+
+    businessObjectives:
+      toUniqueItems(
+        objectives,
+        [
+          "Deliver a business solution aligned with organizational objectives."
+        ]
+      ),
+
+    functionalRequirements:
+      toUniqueItems(
+        requirements,
+        [
+          "Implement required business capabilities."
+        ]
+      ),
+
+    technicalRequirements:
+      toUniqueItems(
+        requirements,
+        [
+          "Provide secure and scalable architecture."
+        ]
+      ),
+
+    scopeItems:
+      toUniqueItems(
+        scope,
+        [
+          "Design, development, testing and deployment."
+        ]
+      ),
+
+    constraints:
+      toUniqueItems(
+        meaningfulLines
+          .filter(line =>
+            /timeline|budget|compliance|security|deadline/i.test(
+              line
+            )
+          )
+          .slice(0, 10),
+        [
+          "Timeline and compliance constraints."
+        ]
+      ),
+
+    deliverables:
+      toUniqueItems(
+        deliverables,
+        [
+          "Production deployment",
+          "Documentation",
+          "Knowledge transfer"
+        ]
+      ),
+
+    risks:
+      toUniqueItems(
+        risks,
+        [
+          "Schedule risk",
+          "Integration risk"
+        ]
+      ),
+
     timelineInformation: [],
-
     budgetInformation: [],
-
     evaluationCriteria: [],
-
     resourceRequirements: [],
 
     proposalInsights: {
@@ -100,7 +233,7 @@ export function analyzeRfpText(text: string): RfpAnalysis {
       pm: [],
       finance: [],
       hr: []
-    }, 
+    }
   };
 }
 

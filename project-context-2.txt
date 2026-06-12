@@ -1,0 +1,285 @@
+
+=====================================================
+FILE: lib\agents\base.ts
+=====================================================
+
+import { AgentOutput, AgentRole, ReviewFinding, WorkflowState } from "@/lib/types";
+
+/**
+ * Base contract for every autonomous specialist in the proposal workflow.
+ */
+export abstract class BaseAgent<TFindings> {
+  protected constructor(
+    public readonly role: AgentRole,
+    public readonly displayName: string
+  ) {}
+
+  /**
+   * Produces the agent's first-pass specialist output from shared workflow state.
+   */
+  abstract run(state: WorkflowState): Promise<AgentOutput<TFindings>>;
+
+  /**
+   * Reviews peer outputs and returns concrete issues or revision requests.
+   */
+  async review(_state: WorkflowState): Promise<ReviewFinding[]> {
+    return [];
+  }
+
+  /**
+   * Applies review findings that target this agent's output.
+   */
+  async revise(output: AgentOutput<TFindings>, findings: ReviewFinding[]): Promise<AgentOutput<TFindings>> {
+    if (findings.length === 0) {
+      return output;
+    }
+
+    return {
+      ...output,
+      confidence: Math.min(0.98, output.confidence + 0.03),
+      reviewNotes: findings.map((item) => `${item.reviewer}: ${item.recommendation}`)
+    };
+  }
+}
+
+=====================================================
+FILE: lib\agents\registry.ts
+=====================================================
+
+import { BaseAgent } from "@/lib/agents/base";
+import { CostEstimationAgent } from "@/lib/agents/cost-estimation";
+import { CTOAgent } from "@/lib/agents/cto";
+import { ProductManagerAgent } from "@/lib/agents/product-manager";
+import { ResourcePlanningAgent } from "@/lib/agents/resource-planning";
+import { RiskAgent } from "@/lib/agents/risk";
+import { TimelineAgent } from "@/lib/agents/timeline";
+import { AgentRole } from "@/lib/types";
+
+/**
+ * Extensible specialist registry for current and future proposal agents.
+ */
+export class AgentRegistry {
+  private readonly agents = new Map<AgentRole, BaseAgent<unknown>>();
+
+  constructor() {
+    this.register(new ProductManagerAgent());
+    this.register(new CTOAgent());
+    this.register(new ResourcePlanningAgent());
+    this.register(new CostEstimationAgent());
+    this.register(new TimelineAgent());
+    this.register(new RiskAgent());
+  }
+
+  /**
+   * Adds or replaces a specialist agent by role.
+   */
+  register(agent: BaseAgent<unknown>): void {
+    this.agents.set(agent.role, agent);
+  }
+
+  /**
+   * Returns a specialist by role or throws for unknown roles.
+   */
+  get(role: AgentRole): BaseAgent<unknown> {
+    const agent = this.agents.get(role);
+    if (!agent) {
+      throw new Error(`No agent registered for role: ${role}`);
+    }
+    return agent;
+  }
+}
+
+=====================================================
+FILE: lib\document\extractor.ts
+=====================================================
+
+import { RfpAnalysis } from "@/lib/types";
+import { toUniqueItems } from "@/lib/utils";
+
+const SECTION_PATTERNS = {
+  requirements: /(?:requirements?|shall|must|should|needs? to|functional|technical)/i,
+  scope: /(?:scope|deliverables?|services?|implementation|migration|support)/i,
+  constraints: /(?:constraint|deadline|budget|compliance|security|accessibility|timeline|submission)/i,
+  objectives: /(?:objective|goal|purpose|business|outcome|vision)/i,
+  risks: /(?:risk|dependency|assumption|challenge|delay|penalty)/i
+};
+
+/**
+ * Extracts normalized text from supported RFP upload formats.
+ */
+export async function extractTextFromFile(file: File): Promise<string> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const name = file.name.toLowerCase();
+
+  if (name.endsWith(".pdf")) {
+    const pdfParse = (await import("pdf-parse")).default;
+    const result = await pdfParse(buffer);
+    return result.text;
+  }
+
+  if (name.endsWith(".docx")) {
+    const mammoth = await import("mammoth");
+    const result = await mammoth.extractRawText({ buffer });
+    return result.value;
+  }
+
+  if (name.endsWith(".txt") || file.type.startsWith("text/")) {
+    return buffer.toString("utf-8");
+  }
+
+  throw new Error("Unsupported file type. Upload a PDF, DOCX, or TXT RFP.");
+}
+
+/**
+ * Converts raw RFP text into a compact structured analysis for agent planning.
+ */
+export function analyzeRfpText(text: string): RfpAnalysis {
+  const normalized = text.replace(/\r/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const lines = normalized
+    .split(/\n|(?<=\.)\s+(?=[A-Z])/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 12);
+
+  const pick = (pattern: RegExp, limit: number) =>
+    lines.filter((line) => pattern.test(line)).slice(0, limit);
+
+  const title = lines.find((line) => /rfp|request for proposal|proposal/i.test(line)) ?? lines[0] ?? "RFP Project";
+  const client = inferClientName(normalized);
+
+  return {
+    clientName: client,
+    projectName: cleanTitle(title),
+    executiveSummary: summarize(normalized), 
+    businessObjectives: toUniqueItems(pick(SECTION_PATTERNS.objectives, 8), [
+      "Deliver a solution aligned with the stated business objectives."
+    ]),
+    functionalRequirements: toUniqueItems(
+      pick(SECTION_PATTERNS.requirements, 18),
+      [
+        "Implement required functionality described in the RFP."
+      ]
+    ),
+    technicalRequirements: toUniqueItems(
+      pick(SECTION_PATTERNS.requirements, 18),
+      [
+        "Provide enterprise-grade architecture and integrations."
+      ]
+    ),
+    scopeItems: toUniqueItems(pick(SECTION_PATTERNS.scope, 12), [
+      "Discovery, design, development, testing, deployment, and operational handover."
+    ]),
+    constraints: toUniqueItems(pick(SECTION_PATTERNS.constraints, 10), [
+      "Timeline, budget, compliance, and stakeholder availability constraints."
+    ]),
+    deliverables: toUniqueItems(pick(/deliverables?|submission|documentation|training|deployment/i, 10), [
+      "Production-ready solution",
+      "Technical documentation",
+      "Deployment and handover package"
+    ]),
+    risks: toUniqueItems(pick(SECTION_PATTERNS.risks, 8), [
+      "Requirements ambiguity",
+      "Integration dependencies",
+      "Schedule compression"
+    ]),
+    timelineInformation: [],
+
+    budgetInformation: [],
+
+    evaluationCriteria: [],
+
+    resourceRequirements: [],
+
+    proposalInsights: {
+      ceo: [],
+      cto: [],
+      pm: [],
+      finance: [],
+      hr: []
+    }, 
+  };
+}
+
+/**
+ * Creates a short source summary from the highest-signal opening content.
+ */
+function summarize(text: string): string {
+  const sentences = text.split(/(?<=\.)\s+/).filter((sentence) => sentence.length > 30);
+  return sentences.slice(0, 4).join(" ").slice(0, 1200);
+}
+
+/**
+ * Infers a likely client name from common RFP language.
+ */
+function inferClientName(text: string): string {
+  const match = text.match(/(?:prepared for|client|issued by|organization|agency)[:\s]+([A-Z][A-Za-z0-9&,\-. ]{2,80})/i);
+  return match?.[1]?.split(/\n/)[0].trim() ?? "Client";
+}
+
+/**
+ * Normalizes a title-like string for display in the final proposal.
+ */
+function cleanTitle(title: string): string {
+  return title.replace(/\s+/g, " ").replace(/^request for proposal[:\s-]*/i, "").slice(0, 120);
+}
+
+=====================================================
+FILE: lib\validation\consistency.ts
+=====================================================
+
+import { ConsistencyCheck, CostPlan, ResourcePlan, TimelinePlan, WorkflowState } from "@/lib/types";
+
+/**
+ * Runs cross-agent validation checks to flag unrealistic or inconsistent estimates.
+ */
+export function runConsistencyChecks(state: WorkflowState): ConsistencyCheck[] {
+  const checks: ConsistencyCheck[] = [];
+  const resource = state.outputs.resourcePlanning?.findings as ResourcePlan | undefined;
+  const cost = state.outputs.costEstimation?.findings as CostPlan | undefined;
+  const timeline = state.outputs.timeline?.findings as TimelinePlan | undefined;
+
+  if (resource && timeline && timeline.durationWeeks < resource.effortPersonMonths * 1.1) {
+    checks.push({
+      severity: "warning",
+      category: "Timeline",
+      message: "Timeline may be unrealistic compared with estimated effort and team capacity."
+    });
+  }
+
+  if (resource && cost) {
+    const costPerPersonMonth = cost.developmentCost / resource.effortPersonMonths;
+    if (costPerPersonMonth < 8000) {
+      checks.push({
+        severity: "critical",
+        category: "Budget",
+        message: "Development budget appears too low for the estimated person-month effort."
+      });
+    }
+  }
+
+  if (resource && resource.totalFte > 10 && timeline && timeline.durationWeeks < 16) {
+    checks.push({
+      severity: "warning",
+      category: "Resource Plan",
+      message: "High FTE count with a short timeline may create onboarding and coordination risk."
+    });
+  }
+
+  if (checks.length === 0) {
+    checks.push({
+      severity: "info",
+      category: "Validation",
+      message: "No major cross-agent consistency conflicts were detected."
+    });
+  }
+
+  return checks;
+}
+
+/**
+ * Computes the average confidence score from agent outputs.
+ */
+export function calculateConfidence(state: WorkflowState): number {
+  const outputs = Object.values(state.outputs);
+  const total = outputs.reduce((sum, output) => sum + output.confidence, 0);
+  return Math.round((total / Math.max(1, outputs.length)) * 100);
+}

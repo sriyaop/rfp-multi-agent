@@ -1,20 +1,14 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { GeminiClient } from "@/lib/ai/gemini";
-import { FINANCE_PROMPT } from "@/lib/agents/prompts";
 
 import {
   AgentOutput,
   CostPlan,
   ResourcePlan,
-  TechnicalPlan,
-  ProductPlan,
   ReviewFinding,
   WorkflowState
 } from "@/lib/types";
 
 export class CostEstimationAgent extends BaseAgent<CostPlan> {
-
-  private readonly llm = new GeminiClient();
 
   constructor() {
     super(
@@ -31,100 +25,76 @@ export class CostEstimationAgent extends BaseAgent<CostPlan> {
       state.outputs.resourcePlanning
         ?.findings as ResourcePlan;
 
-    const technical =
-      state.outputs.cto
-        ?.findings as TechnicalPlan;
+    const developmentCost =
+      resource.effortPersonMonths * 12000;
 
-    const product =
-      state.outputs.productManager
-        ?.findings as ProductPlan;
-
-    const result =
-      await this.llm.generateJson<CostPlan>(
-        FINANCE_PROMPT,
-        `
-CLIENT:
-${state.rfp.clientName}
-
-PROJECT:
-${state.rfp.projectName}
-
-EXECUTIVE SUMMARY:
-${state.rfp.executiveSummary}
-
-BUDGET INFORMATION:
-${JSON.stringify(
-  state.rfp.budgetInformation,
-  null,
-  2
-)}
-
-RESOURCE PLAN:
-${JSON.stringify(
-  resource,
-  null,
-  2
-)}
-
-TECHNICAL PLAN:
-${JSON.stringify(
-  technical,
-  null,
-  2
-)}
-
-PRODUCT PLAN:
-${JSON.stringify(
-  product,
-  null,
-  2
-)}
-
-Generate:
-
-{
-  "developmentCost": 0,
-  "infrastructureCost": 0,
-  "licensingCost": 0,
-  "contingencyCost": 0,
-  "supportCost": 0,
-  "totalBudget": 0,
-  "currency": "USD",
-  "costDrivers": [],
-  "pricingAssumptions": [],
-  "paymentMilestones": []
-}
-
-IMPORTANT:
-
-Use realistic consulting estimates.
-
-Consider:
-
-- Team size
-- Timeline
-- Cloud hosting
-- Compliance
-- Security
-- Licensing
-- Maintenance
-
-Return JSON only.
-`
+    const infrastructureCost =
+      Math.max(
+        10000,
+        Math.round(developmentCost * 0.10)
       );
+
+    const licensingCost =
+      Math.max(
+        5000,
+        Math.round(developmentCost * 0.05)
+      );
+
+    const contingencyCost =
+      Math.round(
+        developmentCost * 0.15
+      );
+
+    const supportCost =
+      Math.round(
+        developmentCost * 0.08
+      );
+
+    const totalBudget =
+      developmentCost +
+      infrastructureCost +
+      licensingCost +
+      contingencyCost +
+      supportCost;
 
     return {
       agent: this.role,
 
       title: this.displayName,
 
-      confidence: 0.92,
+      confidence: 0.94,
 
       assumptions: [
-        "Generated from staffing, architecture and project scope."
+        "Industry consulting rate model."
       ],
 
-      findings: result,
+      findings: {
+        developmentCost,
+        infrastructureCost,
+        licensingCost,
+        contingencyCost,
+        supportCost,
+        totalBudget,
+
+        currency: "USD",
+
+        costDrivers: [
+          "Development effort",
+          "Infrastructure",
+          "QA effort"
+        ],
+
+        pricingAssumptions: [
+          "$12k per person-month"
+        ],
+
+        paymentMilestones: [
+          "20% Kickoff",
+          "30% Design Approval",
+          "30% UAT",
+          "20% Go Live"
+        ]
+      },
 
       reviewNotes: []
     };
@@ -142,10 +112,6 @@ Return JSON only.
       state.outputs.costEstimation
         ?.findings as CostPlan;
 
-    if (!resource || !cost) {
-      return [];
-    }
-
     if (
       cost.totalBudget < 50000 &&
       resource.totalFte > 5
@@ -153,16 +119,12 @@ Return JSON only.
       return [
         {
           reviewer: this.role,
-
           target: "resourcePlanning",
-
           severity: "warning",
-
           finding:
-            "Budget appears inconsistent with staffing levels.",
-
+            "Budget appears low for staffing model.",
           recommendation:
-            "Review resource allocation or revise budget assumptions."
+            "Review staffing assumptions."
         }
       ];
     }

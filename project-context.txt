@@ -1,0 +1,2192 @@
+
+=====================================================
+FILE: lib\types.ts
+=====================================================
+
+export type ConfidenceLevel = "low" | "medium" | "high";
+
+export type AgentRole =
+  | "ceo"
+  | "productManager"
+  | "cto"
+  | "resourcePlanning"
+  | "costEstimation"
+  | "timeline"
+  | "risk";
+
+export interface RfpAnalysis {
+  clientName: string;
+
+  projectName: string;
+
+  executiveSummary: string;
+
+  businessObjectives: string[];
+
+  functionalRequirements: string[];
+
+  technicalRequirements: string[];
+
+  scopeItems: string[];
+
+  constraints: string[];
+
+  deliverables: string[];
+
+  timelineInformation: string[];
+
+  budgetInformation: string[];
+
+  evaluationCriteria: string[];
+
+  resourceRequirements: string[];
+
+  risks: string[];
+
+  proposalInsights: {
+    ceo: string[];
+    cto: string[];
+    pm: string[];
+    finance: string[];
+    hr: string[];
+  };
+}
+
+export interface AgentMessage {
+  from: AgentRole;
+  to: AgentRole | "all";
+  content: string;
+  createdAt: string;
+}
+
+export interface AgentOutput<T = unknown> {
+  agent: AgentRole;
+  title: string;
+  confidence: number;
+  assumptions: string[];
+  findings: T;
+  reviewNotes: string[];
+}
+
+export interface ReviewFinding {
+  reviewer: AgentRole;
+  target: AgentRole;
+  severity: "info" | "warning" | "critical";
+  finding: string;
+  recommendation: string;
+}
+
+export interface ProductPlan {
+  executiveScopeSummary: string;
+
+  features: string[];
+
+  epics: string[];
+
+  userStories: string[];
+
+  deliverables: string[];
+
+  milestones: string[];
+
+  roadmap: string[];
+
+  assumptions: string[];
+
+  successCriteria: string[];
+}
+
+export interface TechnicalPlan {
+
+  architectureOverview: string;
+
+  frontendArchitecture: string[];
+
+  backendArchitecture: string[];
+
+  databaseArchitecture: string[];
+
+  securityArchitecture: string[];
+
+  deploymentArchitecture: string[];
+
+  integrations: string[];
+
+  monitoringStrategy: string[];
+
+  techStack: string[];
+
+  scalabilityStrategy: string[];
+
+  technicalRisks: string[];
+
+  architectureRationale: string[];
+}
+
+export interface ResourcePlan {
+
+  teamComposition: Array<{
+    role: string;
+    fte: number;
+    months: number;
+  }>;
+
+  totalFte: number;
+
+  effortPersonMonths: number;
+
+  allocationPlan: string[];
+
+  staffingStrategy: string[];
+
+  criticalSkills: string[];
+
+  hiringRisks: string[];
+}
+
+export interface CostPlan {
+
+  developmentCost: number;
+
+  infrastructureCost: number;
+
+  licensingCost: number;
+
+  contingencyCost: number;
+
+  supportCost: number;
+
+  totalBudget: number;
+
+  currency: "USD";
+
+  costDrivers: string[];
+
+  pricingAssumptions: string[];
+
+  paymentMilestones: string[];
+}
+
+export interface TimelinePlan {
+  durationWeeks: number;
+  estimatedCompletionDate: string;
+  phases: Array<{ name: string; weeks: number; output: string }>;
+  milestones: string[];
+}
+
+export interface RiskPlan {
+
+  technicalRisks: string[];
+
+  deliveryRisks: string[];
+
+  budgetRisks: string[];
+
+  complianceRisks: string[];
+
+  mitigations: string[];
+
+  riskSummary: string;
+}
+
+export interface ComplianceItem {
+  requirement: string;
+  status: "Covered" | "Partial" | "Gap";
+  owner: string;
+  notes: string;
+}
+
+export interface ConsistencyCheck {
+  severity: "info" | "warning" | "critical";
+  category: string;
+  message: string;
+}
+
+export interface RoiSummary {
+  manualEffortHours: number;
+  automatedEffortHours: number;
+  timeSavedHours: number;
+  efficiencyGainPercent: number;
+  summary: string;
+}
+
+export interface Proposal {
+
+  executiveSummary: string;
+
+  clientUnderstanding: string;
+
+  proposedSolution: string;
+
+  implementationMethodology: string;
+
+  bidRecommendation: string;
+
+  resourcePlan: ResourcePlan;
+
+  costEstimate: CostPlan;
+
+  timeline: TimelinePlan;
+
+  technicalArchitecture: TechnicalPlan;
+
+  riskAssessment: RiskPlan;
+
+  complianceMatrix: ComplianceItem[];
+
+  userStories: string[];
+
+  architectureDiagram: string;
+
+  assumptions: string[];
+
+  conclusion: string;
+
+  finalProposal: string;
+
+  roi: RoiSummary;
+
+  consistencyChecks: ConsistencyCheck[];
+
+  confidenceScore: number;
+
+  agentOutputs: AgentOutput[];
+
+  reviewCycle: ReviewFinding[];
+
+  agentConversation: AgentMessage[];
+}
+export interface WorkflowState {
+  rfp: RfpAnalysis;
+  messages: AgentMessage[];
+  outputs: Partial<Record<AgentRole, AgentOutput>>;
+  reviews: ReviewFinding[];
+}
+
+=====================================================
+FILE: lib\agents\orchestrator.ts
+=====================================================
+
+import { AgentRegistry } from "@/lib/agents/registry";
+import { CEOAgent } from "@/lib/agents/ceo";
+import { WorkflowMemory } from "@/lib/agents/workflow-memory";
+
+import {
+  Proposal,
+  RfpAnalysis,
+  ReviewFinding
+} from "@/lib/types";
+
+export class ProposalOrchestrator {
+
+  private readonly ceo =
+    new CEOAgent();
+
+  private readonly registry =
+    new AgentRegistry();
+
+  async run(
+    rfp: RfpAnalysis
+  ): Promise<Proposal> {
+
+    const memory =
+      new WorkflowMemory(rfp);
+
+    const state =
+      memory.snapshot();
+
+    memory.addMessage(
+      "ceo",
+      "all",
+      `Initiating proposal analysis for ${rfp.projectName}.`
+    );
+
+    const ceoOutput =
+      await this.ceo.run(state);
+
+    memory.setOutput(
+      ceoOutput
+    );
+
+    memory.addMessage(
+      "ceo",
+      "all",
+      "Reviewing project objectives, scope and delivery strategy."
+    );
+
+    memory.addMessage(
+      "ceo",
+      "all",
+      "Delegating analysis to specialist agents."
+    );
+
+    for (
+      const role of
+      ceoOutput.findings.delegationOrder
+    ) {
+
+      memory.addMessage(
+        "ceo",
+        role,
+        `Please analyze your assigned domain and provide recommendations.`
+      );
+
+      const output =
+        await this.registry
+          .get(role)
+          .run(state);
+
+      memory.setOutput(
+        output
+      );
+
+      memory.addMessage(
+        role,
+        "ceo",
+        `${output.title} completed analysis with ${Math.round(output.confidence * 100)}% confidence.`
+      );
+
+      if (
+        Array.isArray(
+          (output.findings as any).features
+        )
+      ) {
+        memory.addMessage(
+          role,
+          "all",
+          `Identified ${
+            (output.findings as any).features.length
+          } primary features.`
+        );
+      }
+
+      if (
+        Array.isArray(
+          (output.findings as any).techStack
+        )
+      ) {
+        memory.addMessage(
+          role,
+          "all",
+          `Recommended ${
+            (output.findings as any).techStack.length
+          } technology components.`
+        );
+      }
+
+      if (
+        (output.findings as any).totalBudget
+      ) {
+        memory.addMessage(
+          role,
+          "all",
+          `Estimated project budget: $${(
+            output.findings as any
+          ).totalBudget.toLocaleString()}.`
+        );
+      }
+
+      if (
+        (output.findings as any)
+          .durationWeeks
+      ) {
+        memory.addMessage(
+          role,
+          "all",
+          `Estimated delivery duration: ${
+            (output.findings as any)
+              .durationWeeks
+          } weeks.`
+        );
+      }
+
+      if (
+        (output.findings as any)
+          .effortPersonMonths
+      ) {
+        memory.addMessage(
+          role,
+          "all",
+          `Estimated effort: ${
+            (output.findings as any)
+              .effortPersonMonths
+          } person months.`
+        );
+      }
+    }
+
+    const reviewFindings:
+      ReviewFinding[] = [];
+
+    memory.addMessage(
+      "ceo",
+      "all",
+      "Initiating cross-agent review cycle."
+    );
+
+    for (
+      const role of
+      ceoOutput.findings.delegationOrder
+    ) {
+
+      const findings =
+        await this.registry
+          .get(role)
+          .review(state);
+
+      reviewFindings.push(
+        ...findings
+      );
+
+      findings.forEach(
+        (finding) => {
+
+          memory.addMessage(
+            finding.reviewer,
+            finding.target,
+            finding.finding
+          );
+
+          memory.addMessage(
+            finding.reviewer,
+            finding.target,
+            `Recommendation: ${finding.recommendation}`
+          );
+        }
+      );
+    }
+
+    memory.addReviews(
+      reviewFindings
+    );
+
+    const ceoDecisions =
+      this.ceo.resolveConflicts(
+        reviewFindings
+      );
+
+    for (
+      const decision of ceoDecisions
+    ) {
+      memory.addMessage(
+        "ceo",
+        "all",
+        decision
+      );
+    }
+
+    for (
+      const role of
+      ceoOutput.findings.delegationOrder
+    ) {
+
+      const current =
+        state.outputs[role];
+
+      if (!current) {
+        continue;
+      }
+
+      const targeted =
+        reviewFindings.filter(
+          finding =>
+            finding.target === role
+        );
+
+      const revised =
+        await this.registry
+          .get(role)
+          .revise(
+            current,
+            targeted
+          );
+
+      memory.setOutput(
+        revised
+      );
+
+      if (
+        targeted.length > 0
+      ) {
+        memory.addMessage(
+          role,
+          "ceo",
+          `Updated output after review cycle (${targeted.length} revisions).`
+        );
+      }
+    }
+
+    memory.addMessage(
+      "ceo",
+      "all",
+      "Proposal generation completed."
+    );
+
+    memory.addMessage(
+      "ceo",
+      "all",
+      "Consolidating final proposal."
+    );
+
+    return this.ceo.consolidate(
+      state
+    );
+  }
+}
+
+=====================================================
+FILE: lib\agents\workflow-memory.ts
+=====================================================
+
+import { AgentMessage, AgentOutput, AgentRole, RfpAnalysis, ReviewFinding, WorkflowState } from "@/lib/types";
+
+/**
+ * In-memory workflow state shared across agents during one autonomous proposal run.
+ */
+export class WorkflowMemory {
+  private readonly state: WorkflowState;
+
+  constructor(rfp: RfpAnalysis) {
+    this.state = {
+      rfp,
+      messages: [],
+      outputs: {},
+      reviews: []
+    };
+  }
+
+  /**
+   * Stores a coordination or debate message between agents.
+   */
+  addMessage(from: AgentRole, to: AgentRole | "all", content: string): void {
+    const message: AgentMessage = { from, to, content, createdAt: new Date().toISOString() };
+    this.state.messages.push(message);
+  }
+
+  /**
+   * Stores the latest structured output for an agent.
+   */
+  setOutput(output: AgentOutput): void {
+    this.state.outputs[output.agent] = output;
+  }
+
+  /**
+   * Adds review findings from the debate cycle.
+   */
+  addReviews(findings: ReviewFinding[]): void {
+    this.state.reviews.push(...findings);
+  }
+
+  /**
+   * Returns the mutable state object used by the active workflow.
+   */
+  snapshot(): WorkflowState {
+    return this.state;
+  }
+}
+
+=====================================================
+FILE: components\proposal-workbench.tsx
+=====================================================
+
+"use client";
+
+import { useMemo, useState } from "react";
+import { Download, FileText, Loader2, ShieldCheck, Upload } from "lucide-react";
+import { Proposal, RfpAnalysis } from "@/lib/types";
+import { usd } from "@/lib/utils";
+
+interface ApiResultItem {
+  rfp: RfpAnalysis;
+  proposal: Proposal;
+  markdown: string;
+  pdfBase64: string;
+  fileName: string;
+}
+
+interface ApiResult {
+  proposalResults: ApiResultItem[];
+  comparison?: Array<{ fileName: string; budget: number; durationWeeks: number; bidRecommendation: string }>;
+}
+
+/**
+ * Interactive upload and review workbench for autonomous proposal generation.
+ */
+export function ProposalWorkbench() {
+  const [files, setFiles] = useState<File[]>([]);
+  const [result, setResult] = useState<ApiResult | null>(null);
+  const [error, setError] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const resultItems = result?.proposalResults ?? [];
+
+  const markdownUrls = useMemo(() => {
+    return resultItems.map((item) => ({
+      fileName: item.fileName,
+      url: URL.createObjectURL(new Blob([item.markdown], { type: "text/markdown" }))
+    }));
+  }, [resultItems]);
+
+  const pdfUrls = useMemo(() => {
+    return resultItems.map((item) => ({
+      fileName: item.fileName,
+      url: URL.createObjectURL(new Blob([Uint8Array.from(atob(item.pdfBase64), (char) => char.charCodeAt(0))], { type: "application/pdf" }))
+    }));
+  }, [resultItems]);
+
+  /**
+   * Sends the uploaded RFP to the proposal generation API.
+   */
+  async function generateProposal() {
+    if (files.length === 0) return;
+    setIsGenerating(true);
+    setError("");
+    setResult(null);
+
+    const body = new FormData();
+    files.forEach((file) => body.append("file", file));
+
+    const response = await fetch("/api/proposals", { method: "POST", body });
+    const data = await response.json();
+
+    if (!response.ok) {
+      setError(data.error ?? "Proposal generation failed.");
+      setIsGenerating(false);
+      return;
+    }
+
+    setResult(data);
+    setIsGenerating(false);
+  }
+
+  return (
+    <main className="app-shell">
+      <header className="topbar">
+        <div className="brand">
+          <h1>Autonomous RFP Proposal Generator</h1>
+          <p>CEO-led multi-agent proposal planning, validation, and export.</p>
+        </div>
+        <span className="badge"><ShieldCheck size={14} /> Cross-agent validation enabled</span>
+      </header>
+
+      <section className="workspace">
+        <aside className="panel stack">
+          <h2>Upload RFP</h2>
+          <label className="upload-zone">
+            <Upload size={34} color="#126a72" />
+            <span>{files.length > 0 ? `${files.length} file(s) selected` : "Choose one or more PDF, DOCX, or TXT files"}</span>
+            <input
+              className="file-input"
+              type="file"
+              multiple
+              accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+            />
+          </label>
+          <button className="button" disabled={files.length === 0 || isGenerating} onClick={generateProposal}>
+            {isGenerating ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+            {isGenerating ? "Generating" : "Generate Proposal"}
+          </button>
+          <p className={error ? "status error" : "status"}>
+            {error || "After upload, the CEO agent delegates work, specialists review each other, and the final proposal is exported."}
+          </p>
+        </aside>
+
+        <section className="stack">
+          {!result && (
+            <div className="panel">
+              <h2>Proposal Output</h2>
+              <p className="status">Upload an RFP to generate scope, FTEs, effort, timeline, cost, architecture, risks, ROI, Markdown, and PDF.</p>
+            </div>
+          )}
+
+          {result && (
+            <>
+              {resultItems.length > 1 && result.comparison && (
+                <div className="panel">
+                  <h2>Comparative Summary</h2>
+                  <ul className="list">
+                    {result.comparison.map((comparison) => (
+                      <li key={comparison.fileName}>
+                        <strong>{comparison.fileName}:</strong> Budget {usd(comparison.budget)}, Duration {comparison.durationWeeks} weeks, Recommendation {comparison.bidRecommendation}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {resultItems.map((item, index) => (
+                <div key={item.fileName} className="panel stack">
+                  <h2>{item.rfp.projectName}</h2>
+                  <div className="metrics">
+                    <div className="metric"><span>Confidence</span><strong>{item.proposal.confidenceScore}%</strong></div>
+                    <div className="metric"><span>Total Budget</span><strong>{usd(item.proposal.costEstimate.totalBudget)}</strong></div>
+                    <div className="metric"><span>Timeline</span><strong>{item.proposal.timeline.durationWeeks} weeks</strong></div>
+                    <div className="metric"><span>Efficiency Gain</span><strong>{item.proposal.roi.efficiencyGainPercent}%</strong></div>
+                  </div>
+
+                  {/* Add Agent Status Panel - Directly below metrics */}
+                  <div className="panel">
+                    <h3>Agent Status</h3>
+                    <ul className="list">
+                      {item.proposal.agentOutputs.map((output) => (
+                        <li key={output.agent}>
+                          {output.title}
+                          {" - "}
+                          {Math.round(output.confidence * 100)}% confidence
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Add Executive Recommendation Panel - Below metrics */}
+                  <div className="panel">
+                    <h3>Bid Recommendation</h3>
+                    <p>{item.proposal.bidRecommendation}</p>
+                  </div>
+
+                  <div className="button-row">
+                    <a className="button secondary" href={markdownUrls[index]?.url} download={`${item.fileName}-proposal.md`}><Download size={16} /> Markdown</a>
+                    <a className="button secondary" href={pdfUrls[index]?.url} download={`${item.fileName}-proposal.pdf`}><Download size={16} /> PDF</a>
+                  </div>
+
+                  <div className="grid-two">
+                    <div className="panel">
+                      <h3>Resource Plan</h3>
+                      <ul className="list">
+                        {item.proposal.resourcePlan.teamComposition.map((row) => (
+                          <li key={row.role}>{row.role}: {row.fte} FTE for {row.months} months</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="panel">
+                      <h3>Communication Log</h3>
+                      <ul className="list">
+                        {item.proposal.agentConversation.slice(0, 25).map((message, messageIndex) => (
+                          <li key={`${message.from}-${message.to}-${messageIndex}`}>
+                            <strong>{message.from}</strong>
+                            {" → "}
+                            {message.to}
+                            <br />
+                            {message.content}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Add Compliance Matrix */}
+                  <div className="panel">
+                    <h3>Compliance Matrix</h3>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Requirement</th>
+                          <th>Status</th>
+                          <th>Owner</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {item.proposal.complianceMatrix.map((row, index) => (
+                          <tr key={index}>
+                            <td>{row.requirement}</td>
+                            <td>{row.status}</td>
+                            <td>{row.owner}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Real Agent Chat Panel - Add this block above Validation */}
+                  <div className="panel">
+                    <h2>Agent Collaboration Timeline</h2>
+                    <div className="stack">
+                      {item.proposal.agentConversation.map((message, idx) => (
+                        <div key={`${message.from}-${idx}`} className="panel">
+                          <div>
+                            <strong>{message.from.toUpperCase()}</strong>
+                            {" → "}
+                            {message.to}
+                          </div>
+                          <div style={{ marginTop: 8 }}>
+                            {message.content}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <div className="panel">
+                <h3>Validation</h3>
+                <ul className="list">
+                  {resultItems.flatMap((item) => item.proposal.consistencyChecks.map((check) => (
+                    <li key={`${item.fileName}-${check.category}-${check.message}`}>{check.severity.toUpperCase()}: {check.message}</li>
+                  )))}
+                </ul>
+              </div>
+            </>
+          )}
+        </section>
+      </section>
+    </main>
+  );
+}
+
+=====================================================
+FILE: app\api\proposals\route.ts
+=====================================================
+
+import { NextResponse } from "next/server";
+
+import { ProposalOrchestrator } from "@/lib/agents/orchestrator";
+
+import { extractTextFromFile } from "@/lib/document/extractor";
+import { analyzeRfpText } from "@/lib/document/extractor";
+import { renderMarkdown } from "@/lib/proposal/markdown";
+import { renderPdf } from "@/lib/proposal/pdf";
+
+export const runtime = "nodejs";
+
+export async function POST(request: Request) {
+  try {
+    const formData = await request.formData();
+
+    const file = formData.get("file");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json(
+        {
+          error: "Upload a PDF, DOCX, or TXT file."
+        },
+        {
+          status: 400
+        }
+      );
+    }
+
+    const rawText = await extractTextFromFile(file);
+    const text = await extractTextFromFile(file);
+    const rfp = analyzeRfpText(text);
+
+    const proposal = await new ProposalOrchestrator().run(
+      rfp as any
+    );
+
+    const markdown = renderMarkdown(
+      proposal
+    );
+
+    const pdf = await renderPdf(
+      proposal
+    );
+
+    return NextResponse.json({
+      fileName: file.name,
+      rfp,
+      proposal,
+      markdown,
+      pdfBase64: pdf.toString("base64")
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Proposal generation failed"
+      },
+      {
+        status: 500
+      }
+    );
+  }
+}
+
+=====================================================
+FILE: lib\proposal\builder.ts
+=====================================================
+
+import {
+  ComplianceItem,
+  CostPlan,
+  ProductPlan,
+  Proposal,
+  ResourcePlan,
+  RiskPlan,
+  TechnicalPlan,
+  TimelinePlan,
+  WorkflowState
+} from "@/lib/types";
+
+import { calculateRoi } from "@/lib/proposal/roi";
+import {
+  calculateConfidence,
+  runConsistencyChecks
+} from "@/lib/validation/consistency";
+
+import { usd } from "@/lib/utils";
+
+export function buildProposal(
+  state: WorkflowState
+): Proposal {
+
+  const product =
+    state.outputs.productManager
+      ?.findings as ProductPlan;
+
+  const technical =
+    state.outputs.cto
+      ?.findings as TechnicalPlan;
+
+  const resource =
+    state.outputs.resourcePlanning
+      ?.findings as ResourcePlan;
+
+  const cost =
+    state.outputs.costEstimation
+      ?.findings as CostPlan;
+
+  const timeline =
+    state.outputs.timeline
+      ?.findings as TimelinePlan;
+
+  const risk =
+    state.outputs.risk
+      ?.findings as RiskPlan;
+
+  const confidenceScore =
+    calculateConfidence(state);
+
+  const consistencyChecks =
+    runConsistencyChecks(state);
+
+  const complianceMatrix: ComplianceItem[] =
+    state.rfp.functionalRequirements
+      .slice(0, 15)
+      .map((requirement) => ({
+        requirement,
+        status: "Covered",
+        owner: "Delivery Team",
+        notes:
+          "Addressed through proposed solution."
+      }));
+
+  const architectureDiagram = `
+graph TD
+
+Client
+ --> Frontend
+
+Frontend
+ --> API
+
+API
+ --> Services
+
+Services
+ --> Database
+
+Services
+ --> Integrations
+
+Services
+ --> Monitoring
+`;
+
+  const executiveSummary =
+    `
+This proposal outlines our recommended approach for delivering ${state.rfp.projectName} for ${state.rfp.clientName}.
+
+The proposed solution aligns with the client's business objectives, technical requirements, timeline expectations and evaluation criteria while minimizing implementation risk.
+`;
+
+  const clientUnderstanding =
+    `
+The client seeks a solution capable of meeting stated functional and technical requirements while maintaining scalability, security, maintainability and operational efficiency.
+
+Key objectives include:
+
+${state.rfp.businessObjectives
+  .map((item) => `• ${item}`)
+  .join("\n")}
+`;
+
+  const proposedSolution =
+    `
+Our proposed solution combines:
+
+${product.features
+  .slice(0, 10)
+  .map((item) => `• ${item}`)
+  .join("\n")}
+
+supported by an enterprise-grade architecture, structured delivery methodology and dedicated implementation team.
+`;
+
+  const implementationMethodology =
+    `
+The project will be executed using an agile delivery framework.
+
+Phases include:
+
+${timeline.phases
+  .map(
+    phase =>
+      `• ${phase.name} (${phase.weeks} weeks)`
+  )
+  .join("\n")}
+`;
+
+  const bidRecommendation =
+    `
+GO
+
+Reasoning:
+
+• Strong solution fit
+
+• Manageable delivery risks
+
+• Realistic staffing model
+
+• Budget aligns with scope
+
+• Architecture supports long-term scalability
+`;
+
+  const assumptions = [
+    ...product.assumptions
+  ];
+
+  const conclusion =
+    `
+This proposal presents a realistic and scalable delivery approach capable of meeting the client's requirements while balancing cost, timeline and implementation risk.
+`;
+
+  const finalProposal = `
+EXECUTIVE SUMMARY
+
+${executiveSummary}
+
+CLIENT UNDERSTANDING
+
+${clientUnderstanding}
+
+PROPOSED SOLUTION
+
+${proposedSolution}
+
+IMPLEMENTATION APPROACH
+
+${implementationMethodology}
+
+TECHNICAL ARCHITECTURE
+
+${technical.architectureOverview}
+
+RESOURCE PLAN
+
+${resource.totalFte} FTE
+
+${resource.effortPersonMonths} Person Months
+
+TIMELINE
+
+${timeline.durationWeeks} Weeks
+
+BUDGET
+
+${usd(cost.totalBudget)}
+
+CONCLUSION
+
+${conclusion}
+`;
+
+  return {
+    executiveSummary,
+
+    clientUnderstanding,
+
+    proposedSolution,
+
+    implementationMethodology,
+
+    bidRecommendation,
+
+    resourcePlan: resource,
+
+    costEstimate: cost,
+
+    timeline,
+
+    technicalArchitecture: technical,
+
+    riskAssessment: risk,
+
+    complianceMatrix,
+
+    userStories:
+      product.userStories,
+
+    architectureDiagram,
+
+    assumptions,
+
+    conclusion,
+
+    finalProposal,
+
+    roi: calculateRoi(state),
+
+    consistencyChecks,
+
+    confidenceScore,
+
+    agentOutputs:
+      Object.values(
+        state.outputs
+      ),
+
+    reviewCycle:
+      state.reviews,
+
+    agentConversation:
+      state.messages
+  };
+}
+
+=====================================================
+FILE: lib\agents\ceo.ts
+=====================================================
+
+import { BaseAgent } from "@/lib/agents/base";
+import { GeminiClient } from "@/lib/ai/gemini";
+
+import {
+  AgentOutput,
+  AgentRole,
+  Proposal,
+  ReviewFinding,
+  WorkflowState
+} from "@/lib/types";
+
+import { buildProposal } from "@/lib/proposal/builder";
+
+export interface CEOPlan {
+
+  delegationOrder: AgentRole[];
+
+  coordinationNotes: string[];
+
+  finalDecisionRules: string[];
+
+  bidStrategy: string[];
+
+  executiveObservations: string[];
+}
+
+export class CEOAgent extends BaseAgent<CEOPlan> {
+
+  private readonly llm =
+    new GeminiClient();
+
+  constructor() {
+    super(
+      "ceo",
+      "CEO Agent"
+    );
+  }
+
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<CEOPlan>> {
+
+    const result =
+      await this.llm.generateJson<CEOPlan>(
+        `
+You are a CEO leading a proposal response team.
+
+Your responsibilities:
+
+- Evaluate opportunity attractiveness
+- Define proposal strategy
+- Coordinate specialists
+- Identify executive concerns
+- Establish decision rules
+
+Return JSON only.
+`,
+        `
+CLIENT:
+${state.rfp.clientName}
+
+PROJECT:
+${state.rfp.projectName}
+
+EXECUTIVE SUMMARY:
+${state.rfp.executiveSummary}
+
+BUSINESS OBJECTIVES:
+${JSON.stringify(
+  state.rfp.businessObjectives,
+  null,
+  2
+)}
+
+EVALUATION CRITERIA:
+${JSON.stringify(
+  state.rfp.evaluationCriteria,
+  null,
+  2
+)}
+
+PROPOSAL INSIGHTS:
+${JSON.stringify(
+  state.rfp.proposalInsights,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "delegationOrder": [
+    "productManager",
+    "cto",
+    "resourcePlanning",
+    "costEstimation",
+    "timeline",
+    "risk"
+  ],
+
+  "coordinationNotes": [],
+
+  "finalDecisionRules": [],
+
+  "bidStrategy": [],
+
+  "executiveObservations": []
+}
+`
+      );
+
+    return {
+      agent: this.role,
+
+      title: this.displayName,
+
+      confidence: 0.95,
+
+      assumptions: [
+        "Executive strategy generated from RFP analysis."
+      ],
+
+      findings: {
+        ...result,
+
+        delegationOrder: [
+          "productManager",
+          "cto",
+          "resourcePlanning",
+          "costEstimation",
+          "timeline",
+          "risk"
+        ]
+      },
+
+      reviewNotes: []
+    };
+  }
+
+  consolidate(
+    state: WorkflowState
+  ): Proposal {
+
+    return buildProposal(
+      state
+    );
+  }
+
+  resolveConflicts(
+    findings: ReviewFinding[]
+  ): string[] {
+
+    if (
+      findings.length === 0
+    ) {
+      return [
+        "Cross-agent review completed with no critical conflicts."
+      ];
+    }
+
+    return findings.map(
+      finding =>
+        `Executive review: ${finding.target} requires revision. ${finding.recommendation}`
+    );
+  }
+}
+
+=====================================================
+FILE: lib\agents\product-manager.ts
+=====================================================
+
+import { BaseAgent } from "@/lib/agents/base";
+import { GeminiClient } from "@/lib/ai/gemini";
+import { PM_PROMPT } from "@/lib/agents/prompts";
+
+import {
+  AgentOutput,
+  ProductPlan,
+  ReviewFinding,
+  WorkflowState
+} from "@/lib/types";
+
+export class ProductManagerAgent extends BaseAgent<ProductPlan> {
+  private readonly llm = new GeminiClient();
+
+  constructor() {
+    super(
+      "productManager",
+      "Product Manager Agent"
+    );
+  }
+
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<ProductPlan>> {
+
+    const result =
+      await this.llm.generateJson<ProductPlan>(
+        PM_PROMPT,
+        `
+CLIENT:
+${state.rfp.clientName}
+
+PROJECT:
+${state.rfp.projectName}
+
+EXECUTIVE SUMMARY:
+${state.rfp.executiveSummary}
+
+BUSINESS OBJECTIVES:
+${JSON.stringify(
+  state.rfp.businessObjectives,
+  null,
+  2
+)}
+
+FUNCTIONAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.functionalRequirements,
+  null,
+  2
+)}
+
+TECHNICAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.technicalRequirements,
+  null,
+  2
+)}
+
+SCOPE:
+${JSON.stringify(
+  state.rfp.scopeItems,
+  null,
+  2
+)}
+
+DELIVERABLES:
+${JSON.stringify(
+  state.rfp.deliverables,
+  null,
+  2
+)}
+
+CONSTRAINTS:
+${JSON.stringify(
+  state.rfp.constraints,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "features": [],
+  "epics": [],
+  "userStories": [],
+  "milestones": [],
+  "roadmap": []
+}
+
+Return JSON only.
+`
+      );
+
+    return {
+      agent: this.role,
+
+      title: this.displayName,
+
+      confidence: 0.93,
+
+      assumptions: [
+        "Generated from complete RFP analysis."
+      ],
+
+      findings: result,
+
+      reviewNotes: []
+    };
+  }
+
+  async review(
+    state: WorkflowState
+  ): Promise<ReviewFinding[]> {
+
+    const timeline =
+      state.outputs.timeline?.findings as
+      | { durationWeeks?: number }
+      | undefined;
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    if (!timeline || !product) {
+      return [];
+    }
+
+    if (
+      timeline.durationWeeks &&
+      product.features.length > 20 &&
+      timeline.durationWeeks < 20
+    ) {
+      return [
+        {
+          reviewer: this.role,
+
+          target: "timeline",
+
+          severity: "warning",
+
+          finding:
+            "Timeline appears insufficient for identified scope.",
+
+          recommendation:
+            "Increase duration or reduce MVP scope."
+        }
+      ];
+    }
+
+    return [];
+  }
+}
+
+=====================================================
+FILE: lib\agents\cto.ts
+=====================================================
+
+import { BaseAgent } from "@/lib/agents/base";
+import { GeminiClient } from "@/lib/ai/gemini";
+import { CTO_PROMPT } from "@/lib/agents/prompts";
+
+import {
+  AgentOutput,
+  TechnicalPlan,
+  WorkflowState
+} from "@/lib/types";
+
+export class CTOAgent extends BaseAgent<TechnicalPlan> {
+
+  private readonly llm = new GeminiClient();
+
+  constructor() {
+    super(
+      "cto",
+      "CTO Agent"
+    );
+  }
+
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<TechnicalPlan>> {
+
+    const productOutput =
+      state.outputs.productManager?.findings;
+
+    const result =
+      await this.llm.generateJson<TechnicalPlan>(
+        CTO_PROMPT,
+        `
+CLIENT:
+${state.rfp.clientName}
+
+PROJECT:
+${state.rfp.projectName}
+
+EXECUTIVE SUMMARY:
+${state.rfp.executiveSummary}
+
+BUSINESS OBJECTIVES:
+${JSON.stringify(
+  state.rfp.businessObjectives,
+  null,
+  2
+)}
+
+FUNCTIONAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.functionalRequirements,
+  null,
+  2
+)}
+
+TECHNICAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.technicalRequirements,
+  null,
+  2
+)}
+
+DELIVERABLES:
+${JSON.stringify(
+  state.rfp.deliverables,
+  null,
+  2
+)}
+
+RISKS:
+${JSON.stringify(
+  state.rfp.risks,
+  null,
+  2
+)}
+
+PM OUTPUT:
+${JSON.stringify(
+  productOutput,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "techStack": [],
+  "architecture": [],
+  "integrations": [],
+  "scalability": [],
+  "technicalRisks": []
+}
+
+IMPORTANT:
+
+Architecture must be enterprise-grade.
+
+Include:
+
+- frontend
+- backend
+- database
+- security
+- hosting
+- integrations
+- monitoring
+
+Return JSON only.
+`
+      );
+
+    return {
+      agent: this.role,
+
+      title: this.displayName,
+
+      confidence: 0.94,
+
+      assumptions: [
+        "Architecture generated from complete RFP analysis."
+      ],
+
+      findings: result,
+
+      reviewNotes: []
+    };
+  }
+}
+
+=====================================================
+FILE: lib\agents\resource-planning.ts
+=====================================================
+
+import { BaseAgent } from "@/lib/agents/base";
+import { GeminiClient } from "@/lib/ai/gemini";
+import { RESOURCE_PROMPT } from "@/lib/agents/prompts";
+
+import {
+  AgentOutput,
+  ProductPlan,
+  ResourcePlan,
+  TechnicalPlan,
+  WorkflowState
+} from "@/lib/types";
+
+export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
+
+  private readonly llm = new GeminiClient();
+
+  constructor() {
+    super(
+      "resourcePlanning",
+      "Resource Planning Agent"
+    );
+  }
+
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<ResourcePlan>> {
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    const technical =
+      state.outputs.cto
+        ?.findings as TechnicalPlan;
+
+    const result =
+      await this.llm.generateJson<ResourcePlan>(
+        RESOURCE_PROMPT,
+        `
+CLIENT:
+${state.rfp.clientName}
+
+PROJECT:
+${state.rfp.projectName}
+
+EXECUTIVE SUMMARY:
+${state.rfp.executiveSummary}
+
+RESOURCE REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.resourceRequirements,
+  null,
+  2
+)}
+
+FUNCTIONAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.functionalRequirements,
+  null,
+  2
+)}
+
+TECHNICAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.technicalRequirements,
+  null,
+  2
+)}
+
+PRODUCT PLAN:
+${JSON.stringify(
+  product,
+  null,
+  2
+)}
+
+TECHNICAL PLAN:
+${JSON.stringify(
+  technical,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "teamComposition": [
+    {
+      "role": "",
+      "fte": 0,
+      "months": 0
+    }
+  ],
+
+  "totalFte": 0,
+
+  "effortPersonMonths": 0,
+
+  "allocationPlan": [],
+
+  "staffingStrategy": [],
+
+  "criticalSkills": [],
+
+  "hiringRisks": []
+}
+
+IMPORTANT:
+
+Think like a delivery director.
+
+Staff realistically.
+
+Consider:
+
+- Solution complexity
+- Integrations
+- Security requirements
+- Compliance
+- Testing effort
+- Deployment effort
+
+Return JSON only.
+`
+      );
+
+    return {
+      agent: this.role,
+
+      title: this.displayName,
+
+      confidence: 0.93,
+
+      assumptions: [
+        "Generated from architecture, scope and resource requirements."
+      ],
+
+      findings: result,
+
+      reviewNotes: []
+    };
+  }
+}
+
+=====================================================
+FILE: lib\agents\cost-estimation.ts
+=====================================================
+
+import { BaseAgent } from "@/lib/agents/base";
+import { GeminiClient } from "@/lib/ai/gemini";
+import { FINANCE_PROMPT } from "@/lib/agents/prompts";
+
+import {
+  AgentOutput,
+  CostPlan,
+  ResourcePlan,
+  TechnicalPlan,
+  ProductPlan,
+  ReviewFinding,
+  WorkflowState
+} from "@/lib/types";
+
+export class CostEstimationAgent extends BaseAgent<CostPlan> {
+
+  private readonly llm = new GeminiClient();
+
+  constructor() {
+    super(
+      "costEstimation",
+      "Cost Estimation Agent"
+    );
+  }
+
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<CostPlan>> {
+
+    const resource =
+      state.outputs.resourcePlanning
+        ?.findings as ResourcePlan;
+
+    const technical =
+      state.outputs.cto
+        ?.findings as TechnicalPlan;
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    const result =
+      await this.llm.generateJson<CostPlan>(
+        FINANCE_PROMPT,
+        `
+CLIENT:
+${state.rfp.clientName}
+
+PROJECT:
+${state.rfp.projectName}
+
+EXECUTIVE SUMMARY:
+${state.rfp.executiveSummary}
+
+BUDGET INFORMATION:
+${JSON.stringify(
+  state.rfp.budgetInformation,
+  null,
+  2
+)}
+
+RESOURCE PLAN:
+${JSON.stringify(
+  resource,
+  null,
+  2
+)}
+
+TECHNICAL PLAN:
+${JSON.stringify(
+  technical,
+  null,
+  2
+)}
+
+PRODUCT PLAN:
+${JSON.stringify(
+  product,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "developmentCost": 0,
+  "infrastructureCost": 0,
+  "licensingCost": 0,
+  "contingencyCost": 0,
+  "supportCost": 0,
+  "totalBudget": 0,
+  "currency": "USD",
+  "costDrivers": [],
+  "pricingAssumptions": [],
+  "paymentMilestones": []
+}
+
+IMPORTANT:
+
+Use realistic consulting estimates.
+
+Consider:
+
+- Team size
+- Timeline
+- Cloud hosting
+- Compliance
+- Security
+- Licensing
+- Maintenance
+
+Return JSON only.
+`
+      );
+
+    return {
+      agent: this.role,
+
+      title: this.displayName,
+
+      confidence: 0.92,
+
+      assumptions: [
+        "Generated from staffing, architecture and project scope."
+      ],
+
+      findings: result,
+
+      reviewNotes: []
+    };
+  }
+
+  async review(
+    state: WorkflowState
+  ): Promise<ReviewFinding[]> {
+
+    const resource =
+      state.outputs.resourcePlanning
+        ?.findings as ResourcePlan;
+
+    const cost =
+      state.outputs.costEstimation
+        ?.findings as CostPlan;
+
+    if (!resource || !cost) {
+      return [];
+    }
+
+    if (
+      cost.totalBudget < 50000 &&
+      resource.totalFte > 5
+    ) {
+      return [
+        {
+          reviewer: this.role,
+
+          target: "resourcePlanning",
+
+          severity: "warning",
+
+          finding:
+            "Budget appears inconsistent with staffing levels.",
+
+          recommendation:
+            "Review resource allocation or revise budget assumptions."
+        }
+      ];
+    }
+
+    return [];
+  }
+}
+
+=====================================================
+FILE: lib\agents\timeline.ts
+=====================================================
+
+import { BaseAgent } from "@/lib/agents/base";
+import { GeminiClient } from "@/lib/ai/gemini";
+
+import {
+  AgentOutput,
+  ProductPlan,
+  ResourcePlan,
+  TimelinePlan,
+  WorkflowState
+} from "@/lib/types";
+
+import { dateAfterWeeks } from "@/lib/utils";
+
+export class TimelineAgent extends BaseAgent<TimelinePlan> {
+
+  private readonly llm = new GeminiClient();
+
+  constructor() {
+    super(
+      "timeline",
+      "Timeline Agent"
+    );
+  }
+
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<TimelinePlan>> {
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    const resource =
+      state.outputs.resourcePlanning
+        ?.findings as ResourcePlan;
+
+    const result =
+      await this.llm.generateJson<{
+        durationWeeks: number;
+        phases: Array<{
+          name: string;
+          weeks: number;
+          output: string;
+        }>;
+        milestones: string[];
+      }>(
+        `
+You are a Senior Program Manager.
+
+Create a realistic delivery timeline.
+
+Return JSON only.
+`,
+        `
+PROJECT:
+${state.rfp.projectName}
+
+TIMELINE INFORMATION:
+${JSON.stringify(
+  state.rfp.timelineInformation,
+  null,
+  2
+)}
+
+PRODUCT PLAN:
+${JSON.stringify(
+  product,
+  null,
+  2
+)}
+
+RESOURCE PLAN:
+${JSON.stringify(
+  resource,
+  null,
+  2
+)}
+
+Generate:
+
+{
+ "durationWeeks": 0,
+ "phases": [],
+ "milestones": []
+}
+`
+      );
+
+    return {
+      agent: this.role,
+
+      title: this.displayName,
+
+      confidence: 0.92,
+
+      assumptions: [
+        "Generated from staffing and scope analysis."
+      ],
+
+      findings: {
+        ...result,
+
+        estimatedCompletionDate:
+          dateAfterWeeks(
+            result.durationWeeks
+          )
+      },
+
+      reviewNotes: []
+    };
+  }
+}
+
+=====================================================
+FILE: lib\agents\risk.ts
+=====================================================
+
+import { BaseAgent } from "@/lib/agents/base";
+import { GeminiClient } from "@/lib/ai/gemini";
+import { RISK_PROMPT } from "@/lib/agents/prompts";
+
+import {
+  AgentOutput,
+  CostPlan,
+  ProductPlan,
+  RiskPlan,
+  TechnicalPlan,
+  TimelinePlan,
+  WorkflowState
+} from "@/lib/types";
+
+export class RiskAgent extends BaseAgent<RiskPlan> {
+
+  private readonly llm = new GeminiClient();
+
+  constructor() {
+    super(
+      "risk",
+      "Risk Agent"
+    );
+  }
+
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<RiskPlan>> {
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    const technical =
+      state.outputs.cto
+        ?.findings as TechnicalPlan;
+
+    const cost =
+      state.outputs.costEstimation
+        ?.findings as CostPlan;
+
+    const timeline =
+      state.outputs.timeline
+        ?.findings as TimelinePlan;
+
+    const result =
+      await this.llm.generateJson<RiskPlan>(
+        RISK_PROMPT,
+        `
+PROJECT:
+${state.rfp.projectName}
+
+KNOWN RISKS:
+${JSON.stringify(
+  state.rfp.risks,
+  null,
+  2
+)}
+
+PRODUCT:
+${JSON.stringify(
+  product,
+  null,
+  2
+)}
+
+TECHNICAL:
+${JSON.stringify(
+  technical,
+  null,
+  2
+)}
+
+COST:
+${JSON.stringify(
+  cost,
+  null,
+  2
+)}
+
+TIMELINE:
+${JSON.stringify(
+  timeline,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "technicalRisks": [],
+  "deliveryRisks": [],
+  "budgetRisks": [],
+  "complianceRisks": [],
+  "mitigations": [],
+  "riskSummary": ""
+}
+
+Return JSON only.
+`
+      );
+
+    return {
+      agent: this.role,
+
+      title: this.displayName,
+
+      confidence: 0.93,
+
+      assumptions: [
+        "Generated from cross-agent analysis."
+      ],
+
+      findings: result,
+
+      reviewNotes: []
+    };
+  }
+}

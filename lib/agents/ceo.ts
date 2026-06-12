@@ -1,5 +1,4 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { GeminiClient } from "@/lib/ai/gemini";
 
 import {
   AgentOutput,
@@ -12,23 +11,14 @@ import {
 import { buildProposal } from "@/lib/proposal/builder";
 
 export interface CEOPlan {
-
   delegationOrder: AgentRole[];
-
   coordinationNotes: string[];
-
   finalDecisionRules: string[];
-
   bidStrategy: string[];
-
   executiveObservations: string[];
 }
 
 export class CEOAgent extends BaseAgent<CEOPlan> {
-
-  private readonly llm =
-    new GeminiClient();
-
   constructor() {
     super(
       "ceo",
@@ -40,89 +30,26 @@ export class CEOAgent extends BaseAgent<CEOPlan> {
     state: WorkflowState
   ): Promise<AgentOutput<CEOPlan>> {
 
-    const result =
-      await this.llm.generateJson<CEOPlan>(
-        `
-You are a CEO leading a proposal response team.
+    const requirementCount =
+      state.rfp.functionalRequirements.length;
 
-Your responsibilities:
-
-- Evaluate opportunity attractiveness
-- Define proposal strategy
-- Coordinate specialists
-- Identify executive concerns
-- Establish decision rules
-
-Return JSON only.
-`,
-        `
-CLIENT:
-${state.rfp.clientName}
-
-PROJECT:
-${state.rfp.projectName}
-
-EXECUTIVE SUMMARY:
-${state.rfp.executiveSummary}
-
-BUSINESS OBJECTIVES:
-${JSON.stringify(
-  state.rfp.businessObjectives,
-  null,
-  2
-)}
-
-EVALUATION CRITERIA:
-${JSON.stringify(
-  state.rfp.evaluationCriteria,
-  null,
-  2
-)}
-
-PROPOSAL INSIGHTS:
-${JSON.stringify(
-  state.rfp.proposalInsights,
-  null,
-  2
-)}
-
-Generate:
-
-{
-  "delegationOrder": [
-    "productManager",
-    "cto",
-    "resourcePlanning",
-    "costEstimation",
-    "timeline",
-    "risk"
-  ],
-
-  "coordinationNotes": [],
-
-  "finalDecisionRules": [],
-
-  "bidStrategy": [],
-
-  "executiveObservations": []
-}
-`
-      );
+    const strategy =
+      requirementCount > 15
+        ? "Enterprise Delivery"
+        : "Accelerated Delivery";
 
     return {
       agent: this.role,
 
       title: this.displayName,
 
-      confidence: 0.95,
+      confidence: 0.98,
 
       assumptions: [
-        "Executive strategy generated from RFP analysis."
+        "RFP analysis completed successfully."
       ],
 
       findings: {
-        ...result,
-
         delegationOrder: [
           "productManager",
           "cto",
@@ -130,6 +57,28 @@ Generate:
           "costEstimation",
           "timeline",
           "risk"
+        ],
+
+        coordinationNotes: [
+          "Product scope must be validated first.",
+          "Architecture should align with business objectives.",
+          "Timeline must reflect implementation complexity."
+        ],
+
+        finalDecisionRules: [
+          "Prioritize delivery realism over optimism.",
+          "Address review findings before proposal finalization."
+        ],
+
+        bidStrategy: [
+          strategy,
+          "Risk-managed delivery",
+          "Scalable architecture"
+        ],
+
+        executiveObservations: [
+          `Detected ${requirementCount} functional requirements.`,
+          `Project identified as ${strategy}.`
         ]
       },
 
@@ -140,27 +89,22 @@ Generate:
   consolidate(
     state: WorkflowState
   ): Proposal {
-
-    return buildProposal(
-      state
-    );
+    return buildProposal(state);
   }
 
   resolveConflicts(
     findings: ReviewFinding[]
   ): string[] {
 
-    if (
-      findings.length === 0
-    ) {
+    if (findings.length === 0) {
       return [
-        "Cross-agent review completed with no critical conflicts."
+        "Cross-agent review completed. No major conflicts detected."
       ];
     }
 
     return findings.map(
       finding =>
-        `Executive review: ${finding.target} requires revision. ${finding.recommendation}`
+        `Executive Decision: ${finding.target} must address ${finding.severity} issue. ${finding.recommendation}`
     );
   }
 }

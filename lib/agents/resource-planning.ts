@@ -1,6 +1,4 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { GeminiClient } from "@/lib/ai/gemini";
-import { RESOURCE_PROMPT } from "@/lib/agents/prompts";
 
 import {
   AgentOutput,
@@ -11,8 +9,6 @@ import {
 } from "@/lib/types";
 
 export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
-
-  private readonly llm = new GeminiClient();
 
   constructor() {
     super(
@@ -33,95 +29,44 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
       state.outputs.cto
         ?.findings as TechnicalPlan;
 
-    const result =
-      await this.llm.generateJson<ResourcePlan>(
-        RESOURCE_PROMPT,
-        `
-CLIENT:
-${state.rfp.clientName}
+    const featureCount =
+      product.features.length;
 
-PROJECT:
-${state.rfp.projectName}
+    const integrationCount =
+      technical.integrations.length;
 
-EXECUTIVE SUMMARY:
-${state.rfp.executiveSummary}
+    let teamComposition;
 
-RESOURCE REQUIREMENTS:
-${JSON.stringify(
-  state.rfp.resourceRequirements,
-  null,
-  2
-)}
-
-FUNCTIONAL REQUIREMENTS:
-${JSON.stringify(
-  state.rfp.functionalRequirements,
-  null,
-  2
-)}
-
-TECHNICAL REQUIREMENTS:
-${JSON.stringify(
-  state.rfp.technicalRequirements,
-  null,
-  2
-)}
-
-PRODUCT PLAN:
-${JSON.stringify(
-  product,
-  null,
-  2
-)}
-
-TECHNICAL PLAN:
-${JSON.stringify(
-  technical,
-  null,
-  2
-)}
-
-Generate:
-
-{
-  "teamComposition": [
-    {
-      "role": "",
-      "fte": 0,
-      "months": 0
+    if (
+      featureCount > 15 ||
+      integrationCount > 3
+    ) {
+      teamComposition = [
+        { role: "Project Manager", fte: 1, months: 8 },
+        { role: "Solution Architect", fte: 1, months: 6 },
+        { role: "Senior Developer", fte: 3, months: 8 },
+        { role: "QA Engineer", fte: 2, months: 6 },
+        { role: "DevOps Engineer", fte: 1, months: 4 }
+      ];
+    } else {
+      teamComposition = [
+        { role: "Project Manager", fte: 1, months: 6 },
+        { role: "Developer", fte: 2, months: 6 },
+        { role: "QA Engineer", fte: 1, months: 4 }
+      ];
     }
-  ],
 
-  "totalFte": 0,
+    const totalFte =
+      teamComposition.reduce(
+        (sum, item) => sum + item.fte,
+        0
+      );
 
-  "effortPersonMonths": 0,
-
-  "allocationPlan": [],
-
-  "staffingStrategy": [],
-
-  "criticalSkills": [],
-
-  "hiringRisks": []
-}
-
-IMPORTANT:
-
-Think like a delivery director.
-
-Staff realistically.
-
-Consider:
-
-- Solution complexity
-- Integrations
-- Security requirements
-- Compliance
-- Testing effort
-- Deployment effort
-
-Return JSON only.
-`
+    const effortPersonMonths =
+      teamComposition.reduce(
+        (sum, item) =>
+          sum + item.fte * item.months,
+        0
       );
 
     return {
@@ -129,13 +74,40 @@ Return JSON only.
 
       title: this.displayName,
 
-      confidence: 0.93,
+      confidence: 0.95,
 
       assumptions: [
-        "Generated from architecture, scope and resource requirements."
+        "Resource plan based on scope and architecture complexity."
       ],
 
-      findings: result,
+      findings: {
+        teamComposition,
+        totalFte,
+        effortPersonMonths,
+
+        allocationPlan: [
+          "Discovery & Design",
+          "Implementation",
+          "Testing",
+          "Deployment"
+        ],
+
+        staffingStrategy: [
+          "Dedicated project team",
+          "Shared governance model"
+        ],
+
+        criticalSkills: [
+          "Full Stack Development",
+          "Architecture",
+          "QA",
+          "DevOps"
+        ],
+
+        hiringRisks: [
+          "Specialized skills availability"
+        ]
+      },
 
       reviewNotes: []
     };

@@ -1,6 +1,4 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { GeminiClient } from "@/lib/ai/gemini";
-import { PM_PROMPT } from "@/lib/agents/prompts";
 
 import {
   AgentOutput,
@@ -10,7 +8,6 @@ import {
 } from "@/lib/types";
 
 export class ProductManagerAgent extends BaseAgent<ProductPlan> {
-  private readonly llm = new GeminiClient();
 
   constructor() {
     super(
@@ -23,73 +20,25 @@ export class ProductManagerAgent extends BaseAgent<ProductPlan> {
     state: WorkflowState
   ): Promise<AgentOutput<ProductPlan>> {
 
-    const result =
-      await this.llm.generateJson<ProductPlan>(
-        PM_PROMPT,
-        `
-CLIENT:
-${state.rfp.clientName}
+    const requirements =
+      state.rfp.functionalRequirements;
 
-PROJECT:
-${state.rfp.projectName}
+    const scope =
+      state.rfp.scopeItems;
 
-EXECUTIVE SUMMARY:
-${state.rfp.executiveSummary}
+    const features =
+      requirements.slice(0, 15);
 
-BUSINESS OBJECTIVES:
-${JSON.stringify(
-  state.rfp.businessObjectives,
-  null,
-  2
-)}
+    const epics =
+      features.map(
+        (_, index) =>
+          `Epic ${index + 1}`
+      );
 
-FUNCTIONAL REQUIREMENTS:
-${JSON.stringify(
-  state.rfp.functionalRequirements,
-  null,
-  2
-)}
-
-TECHNICAL REQUIREMENTS:
-${JSON.stringify(
-  state.rfp.technicalRequirements,
-  null,
-  2
-)}
-
-SCOPE:
-${JSON.stringify(
-  state.rfp.scopeItems,
-  null,
-  2
-)}
-
-DELIVERABLES:
-${JSON.stringify(
-  state.rfp.deliverables,
-  null,
-  2
-)}
-
-CONSTRAINTS:
-${JSON.stringify(
-  state.rfp.constraints,
-  null,
-  2
-)}
-
-Generate:
-
-{
-  "features": [],
-  "epics": [],
-  "userStories": [],
-  "milestones": [],
-  "roadmap": []
-}
-
-Return JSON only.
-`
+    const userStories =
+      features.map(
+        feature =>
+          `As a user, I want ${feature.toLowerCase()} so that business objectives can be achieved.`
       );
 
     return {
@@ -97,13 +46,51 @@ Return JSON only.
 
       title: this.displayName,
 
-      confidence: 0.93,
+      confidence: 0.95,
 
       assumptions: [
-        "Generated from complete RFP analysis."
+        "Requirements extracted from RFP."
       ],
 
-      findings: result,
+      findings: {
+        executiveScopeSummary:
+          `Solution includes ${features.length} major functional capabilities.`,
+
+        features,
+
+        epics,
+
+        userStories,
+
+        deliverables:
+          state.rfp.deliverables,
+
+        milestones: [
+          "Requirements Finalized",
+          "Solution Design Approved",
+          "Development Complete",
+          "UAT Complete",
+          "Production Go-Live"
+        ],
+
+        roadmap: [
+          "Discovery",
+          "Design",
+          "Build",
+          "Testing",
+          "Deployment"
+        ],
+
+        assumptions: [
+          "Requirements remain stable during delivery."
+        ],
+
+        successCriteria: [
+          "Solution deployed successfully.",
+          "Business objectives achieved.",
+          "User acceptance completed."
+        ]
+      },
 
       reviewNotes: []
     };
@@ -127,23 +114,18 @@ Return JSON only.
     }
 
     if (
-      timeline.durationWeeks &&
-      product.features.length > 20 &&
-      timeline.durationWeeks < 20
+      product.features.length > 15 &&
+      (timeline.durationWeeks ?? 0) < 16
     ) {
       return [
         {
           reviewer: this.role,
-
           target: "timeline",
-
           severity: "warning",
-
           finding:
-            "Timeline appears insufficient for identified scope.",
-
+            "Timeline appears aggressive for identified scope.",
           recommendation:
-            "Increase duration or reduce MVP scope."
+            "Increase timeline duration."
         }
       ];
     }
