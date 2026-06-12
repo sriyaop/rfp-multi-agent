@@ -1,39 +1,142 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { AgentOutput, ResourcePlan, WorkflowState } from "@/lib/types";
-import { roundOne } from "@/lib/utils";
+import { GeminiClient } from "@/lib/ai/gemini";
+import { RESOURCE_PROMPT } from "@/lib/agents/prompts";
 
-/**
- * Estimates team composition, FTEs, effort, and allocation plan.
- */
+import {
+  AgentOutput,
+  ProductPlan,
+  ResourcePlan,
+  TechnicalPlan,
+  WorkflowState
+} from "@/lib/types";
+
 export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
+
+  private readonly llm = new GeminiClient();
+
   constructor() {
-    super("resourcePlanning", "Resource Planning Agent");
+    super(
+      "resourcePlanning",
+      "Resource Planning Agent"
+    );
   }
 
-  async run(state: WorkflowState): Promise<AgentOutput<ResourcePlan>> {
-    const complexity = Math.min(3, Math.max(1, Math.ceil(state.rfp.requirements.length / 7)));
-    const months = complexity === 1 ? 3 : complexity === 2 ? 5 : 7;
-    const teamComposition = [
-      { role: "Project Manager", fte: 0.5, months },
-      { role: "Business Analyst", fte: 0.5, months: Math.max(2, months - 1) },
-      { role: "Solution Architect", fte: 0.4, months: Math.max(2, months - 2) },
-      { role: "Full-stack Engineers", fte: complexity + 1, months },
-      { role: "QA Engineer", fte: 0.75, months: Math.max(2, months - 1) },
-      { role: "DevOps Engineer", fte: 0.3, months: Math.max(2, months - 2) }
-    ];
-    const effortPersonMonths = roundOne(teamComposition.reduce((sum, item) => sum + item.fte * item.months, 0));
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<ResourcePlan>> {
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    const technical =
+      state.outputs.cto
+        ?.findings as TechnicalPlan;
+
+    const result =
+      await this.llm.generateJson<ResourcePlan>(
+        RESOURCE_PROMPT,
+        `
+CLIENT:
+${state.rfp.clientName}
+
+PROJECT:
+${state.rfp.projectName}
+
+EXECUTIVE SUMMARY:
+${state.rfp.executiveSummary}
+
+RESOURCE REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.resourceRequirements,
+  null,
+  2
+)}
+
+FUNCTIONAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.functionalRequirements,
+  null,
+  2
+)}
+
+TECHNICAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.technicalRequirements,
+  null,
+  2
+)}
+
+PRODUCT PLAN:
+${JSON.stringify(
+  product,
+  null,
+  2
+)}
+
+TECHNICAL PLAN:
+${JSON.stringify(
+  technical,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "teamComposition": [
+    {
+      "role": "",
+      "fte": 0,
+      "months": 0
+    }
+  ],
+
+  "totalFte": 0,
+
+  "effortPersonMonths": 0,
+
+  "allocationPlan": [],
+
+  "staffingStrategy": [],
+
+  "criticalSkills": [],
+
+  "hiringRisks": []
+}
+
+IMPORTANT:
+
+Think like a delivery director.
+
+Staff realistically.
+
+Consider:
+
+- Solution complexity
+- Integrations
+- Security requirements
+- Compliance
+- Testing effort
+- Deployment effort
+
+Return JSON only.
+`
+      );
 
     return {
       agent: this.role,
+
       title: this.displayName,
-      confidence: 0.8,
-      assumptions: ["Estimates assume a blended agile delivery model and stable stakeholder availability."],
-      findings: {
-        teamComposition,
-        totalFte: roundOne(teamComposition.reduce((sum, item) => sum + item.fte, 0)),
-        effortPersonMonths,
-        allocationPlan: ["Discovery team ramps first", "Engineering peaks during build sprints", "QA and DevOps increase during hardening and release", "PM remains active through closure"]
-      },
+
+      confidence: 0.93,
+
+      assumptions: [
+        "Generated from architecture, scope and resource requirements."
+      ],
+
+      findings: result,
+
       reviewNotes: []
     };
   }

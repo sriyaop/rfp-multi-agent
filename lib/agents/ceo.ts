@@ -1,55 +1,166 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { AgentOutput, AgentRole, Proposal, ReviewFinding, WorkflowState } from "@/lib/types";
+import { GeminiClient } from "@/lib/ai/gemini";
+
+import {
+  AgentOutput,
+  AgentRole,
+  Proposal,
+  ReviewFinding,
+  WorkflowState
+} from "@/lib/types";
+
 import { buildProposal } from "@/lib/proposal/builder";
 
 export interface CEOPlan {
+
   delegationOrder: AgentRole[];
+
   coordinationNotes: string[];
+
   finalDecisionRules: string[];
+
+  bidStrategy: string[];
+
+  executiveObservations: string[];
 }
 
-/**
- * Master agent that delegates, coordinates reviews, resolves conflicts, and consolidates the proposal.
- */
 export class CEOAgent extends BaseAgent<CEOPlan> {
+
+  private readonly llm =
+    new GeminiClient();
+
   constructor() {
-    super("ceo", "CEO Agent");
+    super(
+      "ceo",
+      "CEO Agent"
+    );
   }
 
-  async run(state: WorkflowState): Promise<AgentOutput<CEOPlan>> {
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<CEOPlan>> {
+
+    const result =
+      await this.llm.generateJson<CEOPlan>(
+        `
+You are a CEO leading a proposal response team.
+
+Your responsibilities:
+
+- Evaluate opportunity attractiveness
+- Define proposal strategy
+- Coordinate specialists
+- Identify executive concerns
+- Establish decision rules
+
+Return JSON only.
+`,
+        `
+CLIENT:
+${state.rfp.clientName}
+
+PROJECT:
+${state.rfp.projectName}
+
+EXECUTIVE SUMMARY:
+${state.rfp.executiveSummary}
+
+BUSINESS OBJECTIVES:
+${JSON.stringify(
+  state.rfp.businessObjectives,
+  null,
+  2
+)}
+
+EVALUATION CRITERIA:
+${JSON.stringify(
+  state.rfp.evaluationCriteria,
+  null,
+  2
+)}
+
+PROPOSAL INSIGHTS:
+${JSON.stringify(
+  state.rfp.proposalInsights,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "delegationOrder": [
+    "productManager",
+    "cto",
+    "resourcePlanning",
+    "costEstimation",
+    "timeline",
+    "risk"
+  ],
+
+  "coordinationNotes": [],
+
+  "finalDecisionRules": [],
+
+  "bidStrategy": [],
+
+  "executiveObservations": []
+}
+`
+      );
+
     return {
       agent: this.role,
+
       title: this.displayName,
-      confidence: 0.88,
-      assumptions: ["Specialist agents own their domains; CEO only coordinates and consolidates."],
+
+      confidence: 0.95,
+
+      assumptions: [
+        "Executive strategy generated from RFP analysis."
+      ],
+
       findings: {
-        delegationOrder: ["productManager", "cto", "resourcePlanning", "costEstimation", "timeline", "risk"],
-        coordinationNotes: [
-          "Product scope informs architecture, resources, cost, and timeline.",
-          "Resource planning must feed cost and schedule estimates.",
-          "Risk review must validate budget, FTE, and timeline realism."
-        ],
-        finalDecisionRules: [
-          "Prefer conservative delivery estimates when agents disagree.",
-          "Flag unresolved conflicts instead of hiding them.",
-          "Include confidence scores and assumptions in the final output."
+        ...result,
+
+        delegationOrder: [
+          "productManager",
+          "cto",
+          "resourcePlanning",
+          "costEstimation",
+          "timeline",
+          "risk"
         ]
       },
+
       reviewNotes: []
     };
   }
 
-  /**
-   * Consolidates specialist artifacts into the final executive proposal.
-   */
-  consolidate(state: WorkflowState): Proposal {
-    return buildProposal(state);
+  consolidate(
+    state: WorkflowState
+  ): Proposal {
+
+    return buildProposal(
+      state
+    );
   }
 
-  /**
-   * Resolves debate findings into concise coordination messages.
-   */
-  resolveConflicts(findings: ReviewFinding[]): string[] {
-    return findings.map((finding) => `${finding.target} revision requested: ${finding.recommendation}`);
+  resolveConflicts(
+    findings: ReviewFinding[]
+  ): string[] {
+
+    if (
+      findings.length === 0
+    ) {
+      return [
+        "Cross-agent review completed with no critical conflicts."
+      ];
+    }
+
+    return findings.map(
+      finding =>
+        `Executive review: ${finding.target} requires revision. ${finding.recommendation}`
+    );
   }
 }

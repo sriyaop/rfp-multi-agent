@@ -1,47 +1,151 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { AgentOutput, ProductPlan, ReviewFinding, WorkflowState } from "@/lib/types";
+import { GeminiClient } from "@/lib/ai/gemini";
+import { PM_PROMPT } from "@/lib/agents/prompts";
 
-/**
- * Generates product scope, epics, user stories, milestones, and roadmap.
- */
+import {
+  AgentOutput,
+  ProductPlan,
+  ReviewFinding,
+  WorkflowState
+} from "@/lib/types";
+
 export class ProductManagerAgent extends BaseAgent<ProductPlan> {
+  private readonly llm = new GeminiClient();
+
   constructor() {
-    super("productManager", "Product Manager Agent");
+    super(
+      "productManager",
+      "Product Manager Agent"
+    );
   }
 
-  async run(state: WorkflowState): Promise<AgentOutput<ProductPlan>> {
-    const features = state.rfp.requirements.slice(0, 10);
-    const epics = state.rfp.scopeItems.slice(0, 6).map((item) => `Epic: ${item}`);
-    const userStories = features.slice(0, 8).map((feature) => `As a user, I want ${feature.toLowerCase()} so that the business objective is met.`);
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<ProductPlan>> {
+
+    const result =
+      await this.llm.generateJson<ProductPlan>(
+        PM_PROMPT,
+        `
+CLIENT:
+${state.rfp.clientName}
+
+PROJECT:
+${state.rfp.projectName}
+
+EXECUTIVE SUMMARY:
+${state.rfp.executiveSummary}
+
+BUSINESS OBJECTIVES:
+${JSON.stringify(
+  state.rfp.businessObjectives,
+  null,
+  2
+)}
+
+FUNCTIONAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.functionalRequirements,
+  null,
+  2
+)}
+
+TECHNICAL REQUIREMENTS:
+${JSON.stringify(
+  state.rfp.technicalRequirements,
+  null,
+  2
+)}
+
+SCOPE:
+${JSON.stringify(
+  state.rfp.scopeItems,
+  null,
+  2
+)}
+
+DELIVERABLES:
+${JSON.stringify(
+  state.rfp.deliverables,
+  null,
+  2
+)}
+
+CONSTRAINTS:
+${JSON.stringify(
+  state.rfp.constraints,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "features": [],
+  "epics": [],
+  "userStories": [],
+  "milestones": [],
+  "roadmap": []
+}
+
+Return JSON only.
+`
+      );
 
     return {
       agent: this.role,
+
       title: this.displayName,
-      confidence: 0.82,
-      assumptions: ["Detailed acceptance criteria will be confirmed during discovery."],
-      findings: {
-        features,
-        epics,
-        userStories,
-        milestones: ["Discovery sign-off", "MVP feature complete", "UAT approval", "Production launch"],
-        roadmap: ["Discovery and backlog shaping", "Architecture and UX design", "Incremental delivery sprints", "UAT and hardening", "Launch and hypercare"]
-      },
+
+      confidence: 0.93,
+
+      assumptions: [
+        "Generated from complete RFP analysis."
+      ],
+
+      findings: result,
+
       reviewNotes: []
     };
   }
 
-  async review(state: WorkflowState): Promise<ReviewFinding[]> {
-    const timeline = state.outputs.timeline?.findings as { durationWeeks?: number } | undefined;
-    const featureCount = (state.outputs.productManager?.findings as ProductPlan | undefined)?.features.length ?? 0;
+  async review(
+    state: WorkflowState
+  ): Promise<ReviewFinding[]> {
 
-    if (timeline?.durationWeeks && timeline.durationWeeks < Math.max(8, featureCount * 1.2)) {
-      return [{
-        reviewer: this.role,
-        target: "timeline",
-        severity: "warning",
-        finding: "The proposed timeline appears compressed for the identified feature count.",
-        recommendation: "Increase delivery duration or reduce MVP scope."
-      }];
+    const timeline =
+      state.outputs.timeline?.findings as
+      | { durationWeeks?: number }
+      | undefined;
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    if (!timeline || !product) {
+      return [];
+    }
+
+    if (
+      timeline.durationWeeks &&
+      product.features.length > 20 &&
+      timeline.durationWeeks < 20
+    ) {
+      return [
+        {
+          reviewer: this.role,
+
+          target: "timeline",
+
+          severity: "warning",
+
+          finding:
+            "Timeline appears insufficient for identified scope.",
+
+          recommendation:
+            "Increase duration or reduce MVP scope."
+        }
+      ];
     }
 
     return [];

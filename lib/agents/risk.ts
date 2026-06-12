@@ -1,32 +1,118 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { AgentOutput, RiskPlan, WorkflowState } from "@/lib/types";
+import { GeminiClient } from "@/lib/ai/gemini";
+import { RISK_PROMPT } from "@/lib/agents/prompts";
 
-/**
- * Generates technical, delivery, and budget risks with mitigation plans.
- */
+import {
+  AgentOutput,
+  CostPlan,
+  ProductPlan,
+  RiskPlan,
+  TechnicalPlan,
+  TimelinePlan,
+  WorkflowState
+} from "@/lib/types";
+
 export class RiskAgent extends BaseAgent<RiskPlan> {
+
+  private readonly llm = new GeminiClient();
+
   constructor() {
-    super("risk", "Risk Agent");
+    super(
+      "risk",
+      "Risk Agent"
+    );
   }
 
-  async run(state: WorkflowState): Promise<AgentOutput<RiskPlan>> {
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<RiskPlan>> {
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    const technical =
+      state.outputs.cto
+        ?.findings as TechnicalPlan;
+
+    const cost =
+      state.outputs.costEstimation
+        ?.findings as CostPlan;
+
+    const timeline =
+      state.outputs.timeline
+        ?.findings as TimelinePlan;
+
+    const result =
+      await this.llm.generateJson<RiskPlan>(
+        RISK_PROMPT,
+        `
+PROJECT:
+${state.rfp.projectName}
+
+KNOWN RISKS:
+${JSON.stringify(
+  state.rfp.risks,
+  null,
+  2
+)}
+
+PRODUCT:
+${JSON.stringify(
+  product,
+  null,
+  2
+)}
+
+TECHNICAL:
+${JSON.stringify(
+  technical,
+  null,
+  2
+)}
+
+COST:
+${JSON.stringify(
+  cost,
+  null,
+  2
+)}
+
+TIMELINE:
+${JSON.stringify(
+  timeline,
+  null,
+  2
+)}
+
+Generate:
+
+{
+  "technicalRisks": [],
+  "deliveryRisks": [],
+  "budgetRisks": [],
+  "complianceRisks": [],
+  "mitigations": [],
+  "riskSummary": ""
+}
+
+Return JSON only.
+`
+      );
+
     return {
       agent: this.role,
+
       title: this.displayName,
-      confidence: 0.83,
-      assumptions: ["Risk severity should be recalibrated after vendor Q&A and stakeholder interviews."],
-      findings: {
-        technicalRisks: ["Incomplete integration details", "Security and data privacy obligations", "Performance expectations under load"],
-        deliveryRisks: ["Slow feedback cycles", "Scope growth after award", "Dependency on third-party approvals"],
-        budgetRisks: ["Unpriced change requests", "Infrastructure usage variance", "Compliance remediation effort"],
-        mitigations: [
-          "Run discovery workshops before final baseline",
-          "Maintain a change-control process",
-          "Add contingency to budget and timeline",
-          "Validate integrations early with technical spikes",
-          "Use cross-agent consistency checks before proposal release"
-        ]
-      },
+
+      confidence: 0.93,
+
+      assumptions: [
+        "Generated from cross-agent analysis."
+      ],
+
+      findings: result,
+
       reviewNotes: []
     };
   }

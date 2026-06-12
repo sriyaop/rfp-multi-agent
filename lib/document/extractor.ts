@@ -54,12 +54,22 @@ export function analyzeRfpText(text: string): RfpAnalysis {
   return {
     clientName: client,
     projectName: cleanTitle(title),
+    executiveSummary: summarize(normalized), 
     businessObjectives: toUniqueItems(pick(SECTION_PATTERNS.objectives, 8), [
       "Deliver a solution aligned with the stated business objectives."
     ]),
-    requirements: toUniqueItems(pick(SECTION_PATTERNS.requirements, 18), [
-      "Implement the required functionality described in the uploaded RFP."
-    ]),
+    functionalRequirements: toUniqueItems(
+      pick(SECTION_PATTERNS.requirements, 18),
+      [
+        "Implement required functionality described in the RFP."
+      ]
+    ),
+    technicalRequirements: toUniqueItems(
+      pick(SECTION_PATTERNS.requirements, 18),
+      [
+        "Provide enterprise-grade architecture and integrations."
+      ]
+    ),
     scopeItems: toUniqueItems(pick(SECTION_PATTERNS.scope, 12), [
       "Discovery, design, development, testing, deployment, and operational handover."
     ]),
@@ -76,7 +86,21 @@ export function analyzeRfpText(text: string): RfpAnalysis {
       "Integration dependencies",
       "Schedule compression"
     ]),
-    sourceSummary: summarize(normalized)
+    timelineInformation: [],
+
+    budgetInformation: [],
+
+    evaluationCriteria: [],
+
+    resourceRequirements: [],
+
+    proposalInsights: {
+      ceo: [],
+      cto: [],
+      pm: [],
+      finance: [],
+      hr: []
+    }, 
   };
 }
 

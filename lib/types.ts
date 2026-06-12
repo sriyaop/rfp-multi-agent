@@ -11,14 +11,40 @@ export type AgentRole =
 
 export interface RfpAnalysis {
   clientName: string;
+
   projectName: string;
+
+  executiveSummary: string;
+
   businessObjectives: string[];
-  requirements: string[];
+
+  functionalRequirements: string[];
+
+  technicalRequirements: string[];
+
   scopeItems: string[];
+
   constraints: string[];
+
   deliverables: string[];
+
+  timelineInformation: string[];
+
+  budgetInformation: string[];
+
+  evaluationCriteria: string[];
+
+  resourceRequirements: string[];
+
   risks: string[];
-  sourceSummary: string;
+
+  proposalInsights: {
+    ceo: string[];
+    cto: string[];
+    pm: string[];
+    finance: string[];
+    hr: string[];
+  };
 }
 
 export interface AgentMessage {
@@ -46,35 +72,94 @@ export interface ReviewFinding {
 }
 
 export interface ProductPlan {
+  executiveScopeSummary: string;
+
   features: string[];
+
   epics: string[];
+
   userStories: string[];
+
+  deliverables: string[];
+
   milestones: string[];
+
   roadmap: string[];
+
+  assumptions: string[];
+
+  successCriteria: string[];
 }
 
 export interface TechnicalPlan {
-  techStack: string[];
-  architecture: string[];
+
+  architectureOverview: string;
+
+  frontendArchitecture: string[];
+
+  backendArchitecture: string[];
+
+  databaseArchitecture: string[];
+
+  securityArchitecture: string[];
+
+  deploymentArchitecture: string[];
+
   integrations: string[];
-  scalability: string[];
+
+  monitoringStrategy: string[];
+
+  techStack: string[];
+
+  scalabilityStrategy: string[];
+
   technicalRisks: string[];
+
+  architectureRationale: string[];
 }
 
 export interface ResourcePlan {
-  teamComposition: Array<{ role: string; fte: number; months: number }>;
+
+  teamComposition: Array<{
+    role: string;
+    fte: number;
+    months: number;
+  }>;
+
   totalFte: number;
+
   effortPersonMonths: number;
+
   allocationPlan: string[];
+
+  staffingStrategy: string[];
+
+  criticalSkills: string[];
+
+  hiringRisks: string[];
 }
 
 export interface CostPlan {
+
   developmentCost: number;
+
   infrastructureCost: number;
+
+  licensingCost: number;
+
   contingencyCost: number;
+
+  supportCost: number;
+
   totalBudget: number;
+
   currency: "USD";
+
   costDrivers: string[];
+
+  pricingAssumptions: string[];
+
+  paymentMilestones: string[];
 }
 
 export interface TimelinePlan {
@@ -85,10 +170,25 @@ export interface TimelinePlan {
 }
 
 export interface RiskPlan {
+
   technicalRisks: string[];
+
   deliveryRisks: string[];
+
   budgetRisks: string[];
+
+  complianceRisks: string[];
+
   mitigations: string[];
+
+  riskSummary: string;
+}
+
+export interface ComplianceItem {
+  requirement: string;
+  status: "Covered" | "Partial" | "Gap";
+  owner: string;
+  notes: string;
 }
 
 export interface ConsistencyCheck {
@@ -106,21 +206,51 @@ export interface RoiSummary {
 }
 
 export interface Proposal {
-  executiveSummary: string;
-  resourcePlan: ResourcePlan;
-  costEstimate: CostPlan;
-  timeline: TimelinePlan;
-  technicalArchitecture: TechnicalPlan;
-  riskAssessment: RiskPlan;
-  userStories: string[];
-  finalProposal: string;
-  roi: RoiSummary;
-  consistencyChecks: ConsistencyCheck[];
-  confidenceScore: number;
-  agentOutputs: AgentOutput[];
-  reviewCycle: ReviewFinding[];
-}
 
+  executiveSummary: string;
+
+  clientUnderstanding: string;
+
+  proposedSolution: string;
+
+  implementationMethodology: string;
+
+  bidRecommendation: string;
+
+  resourcePlan: ResourcePlan;
+
+  costEstimate: CostPlan;
+
+  timeline: TimelinePlan;
+
+  technicalArchitecture: TechnicalPlan;
+
+  riskAssessment: RiskPlan;
+
+  complianceMatrix: ComplianceItem[];
+
+  userStories: string[];
+
+  architectureDiagram: string;
+
+  assumptions: string[];
+
+  conclusion: string;
+
+  finalProposal: string;
+
+  roi: RoiSummary;
+
+  consistencyChecks: ConsistencyCheck[];
+
+  confidenceScore: number;
+
+  agentOutputs: AgentOutput[];
+
+  reviewCycle: ReviewFinding[];
+
+  agentConversation: AgentMessage[];
+}
 export interface WorkflowState {
   rfp: RfpAnalysis;
   messages: AgentMessage[];

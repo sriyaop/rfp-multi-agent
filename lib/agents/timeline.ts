@@ -1,37 +1,111 @@
 import { BaseAgent } from "@/lib/agents/base";
-import { AgentOutput, ResourcePlan, TimelinePlan, WorkflowState } from "@/lib/types";
+import { GeminiClient } from "@/lib/ai/gemini";
+
+import {
+  AgentOutput,
+  ProductPlan,
+  ResourcePlan,
+  TimelinePlan,
+  WorkflowState
+} from "@/lib/types";
+
 import { dateAfterWeeks } from "@/lib/utils";
 
-/**
- * Generates delivery schedule, phases, milestones, and completion date.
- */
 export class TimelineAgent extends BaseAgent<TimelinePlan> {
+
+  private readonly llm = new GeminiClient();
+
   constructor() {
-    super("timeline", "Timeline Agent");
+    super(
+      "timeline",
+      "Timeline Agent"
+    );
   }
 
-  async run(state: WorkflowState): Promise<AgentOutput<TimelinePlan>> {
-    const resource = state.outputs.resourcePlanning?.findings as ResourcePlan | undefined;
-    const baseWeeks = Math.max(12, Math.ceil((resource?.effortPersonMonths ?? 12) * 1.7));
-    const durationWeeks = Math.min(52, baseWeeks);
+  async run(
+    state: WorkflowState
+  ): Promise<AgentOutput<TimelinePlan>> {
+
+    const product =
+      state.outputs.productManager
+        ?.findings as ProductPlan;
+
+    const resource =
+      state.outputs.resourcePlanning
+        ?.findings as ResourcePlan;
+
+    const result =
+      await this.llm.generateJson<{
+        durationWeeks: number;
+        phases: Array<{
+          name: string;
+          weeks: number;
+          output: string;
+        }>;
+        milestones: string[];
+      }>(
+        `
+You are a Senior Program Manager.
+
+Create a realistic delivery timeline.
+
+Return JSON only.
+`,
+        `
+PROJECT:
+${state.rfp.projectName}
+
+TIMELINE INFORMATION:
+${JSON.stringify(
+  state.rfp.timelineInformation,
+  null,
+  2
+)}
+
+PRODUCT PLAN:
+${JSON.stringify(
+  product,
+  null,
+  2
+)}
+
+RESOURCE PLAN:
+${JSON.stringify(
+  resource,
+  null,
+  2
+)}
+
+Generate:
+
+{
+ "durationWeeks": 0,
+ "phases": [],
+ "milestones": []
+}
+`
+      );
 
     return {
       agent: this.role,
+
       title: this.displayName,
-      confidence: 0.8,
-      assumptions: ["Timeline assumes two-week agile sprints and timely client feedback."],
+
+      confidence: 0.92,
+
+      assumptions: [
+        "Generated from staffing and scope analysis."
+      ],
+
       findings: {
-        durationWeeks,
-        estimatedCompletionDate: dateAfterWeeks(durationWeeks),
-        phases: [
-          { name: "Discovery", weeks: 2, output: "Validated scope, requirements, and backlog" },
-          { name: "Architecture and Design", weeks: 3, output: "Architecture, UX flows, and release plan" },
-          { name: "Build Sprints", weeks: Math.max(5, durationWeeks - 9), output: "Working increments and demos" },
-          { name: "Testing and UAT", weeks: 3, output: "Defect closure and client acceptance" },
-          { name: "Deployment and Hypercare", weeks: 1, output: "Production launch and handover" }
-        ],
-        milestones: ["Kickoff", "Requirements baseline", "Architecture approval", "MVP demo", "UAT sign-off", "Go-live"]
+        ...result,
+
+        estimatedCompletionDate:
+          dateAfterWeeks(
+            result.durationWeeks
+          )
       },
+
       reviewNotes: []
     };
   }

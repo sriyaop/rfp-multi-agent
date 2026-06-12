@@ -5,7 +5,7 @@ import { Download, FileText, Loader2, ShieldCheck, Upload } from "lucide-react";
 import { Proposal, RfpAnalysis } from "@/lib/types";
 import { usd } from "@/lib/utils";
 
-interface ApiResult {
+interface ApiResultItem {
   rfp: RfpAnalysis;
   proposal: Proposal;
   markdown: string;
@@ -13,37 +13,47 @@ interface ApiResult {
   fileName: string;
 }
 
+interface ApiResult {
+  proposalResults: ApiResultItem[];
+  comparison?: Array<{ fileName: string; budget: number; durationWeeks: number; bidRecommendation: string }>;
+}
+
 /**
  * Interactive upload and review workbench for autonomous proposal generation.
  */
 export function ProposalWorkbench() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [result, setResult] = useState<ApiResult | null>(null);
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const markdownUrl = useMemo(() => {
-    if (!result) return "";
-    return URL.createObjectURL(new Blob([result.markdown], { type: "text/markdown" }));
-  }, [result]);
+  const resultItems = result?.proposalResults ?? [];
 
-  const pdfUrl = useMemo(() => {
-    if (!result) return "";
-    const bytes = Uint8Array.from(atob(result.pdfBase64), (char) => char.charCodeAt(0));
-    return URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-  }, [result]);
+  const markdownUrls = useMemo(() => {
+    return resultItems.map((item) => ({
+      fileName: item.fileName,
+      url: URL.createObjectURL(new Blob([item.markdown], { type: "text/markdown" }))
+    }));
+  }, [resultItems]);
+
+  const pdfUrls = useMemo(() => {
+    return resultItems.map((item) => ({
+      fileName: item.fileName,
+      url: URL.createObjectURL(new Blob([Uint8Array.from(atob(item.pdfBase64), (char) => char.charCodeAt(0))], { type: "application/pdf" }))
+    }));
+  }, [resultItems]);
 
   /**
    * Sends the uploaded RFP to the proposal generation API.
    */
   async function generateProposal() {
-    if (!file) return;
+    if (files.length === 0) return;
     setIsGenerating(true);
     setError("");
     setResult(null);
 
     const body = new FormData();
-    body.append("file", file);
+    files.forEach((file) => body.append("file", file));
 
     const response = await fetch("/api/proposals", { method: "POST", body });
     const data = await response.json();
@@ -73,15 +83,16 @@ export function ProposalWorkbench() {
           <h2>Upload RFP</h2>
           <label className="upload-zone">
             <Upload size={34} color="#126a72" />
-            <span>{file ? file.name : "Choose a PDF, DOCX, or TXT file"}</span>
+            <span>{files.length > 0 ? `${files.length} file(s) selected` : "Choose one or more PDF, DOCX, or TXT files"}</span>
             <input
               className="file-input"
               type="file"
+              multiple
               accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
             />
           </label>
-          <button className="button" disabled={!file || isGenerating} onClick={generateProposal}>
+          <button className="button" disabled={files.length === 0 || isGenerating} onClick={generateProposal}>
             {isGenerating ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
             {isGenerating ? "Generating" : "Generate Proposal"}
           </button>
@@ -100,42 +111,130 @@ export function ProposalWorkbench() {
 
           {result && (
             <>
-              <div className="panel stack">
-                <h2>{result.rfp.projectName}</h2>
-                <div className="metrics">
-                  <div className="metric"><span>Confidence</span><strong>{result.proposal.confidenceScore}%</strong></div>
-                  <div className="metric"><span>Total Budget</span><strong>{usd(result.proposal.costEstimate.totalBudget)}</strong></div>
-                  <div className="metric"><span>Timeline</span><strong>{result.proposal.timeline.durationWeeks} weeks</strong></div>
-                  <div className="metric"><span>Efficiency Gain</span><strong>{result.proposal.roi.efficiencyGainPercent}%</strong></div>
+              {resultItems.length > 1 && result.comparison && (
+                <div className="panel">
+                  <h2>Comparative Summary</h2>
+                  <ul className="list">
+                    {result.comparison.map((comparison) => (
+                      <li key={comparison.fileName}>
+                        <strong>{comparison.fileName}:</strong> Budget {usd(comparison.budget)}, Duration {comparison.durationWeeks} weeks, Recommendation {comparison.bidRecommendation}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <div className="button-row">
-                  <a className="button secondary" href={markdownUrl} download="proposal.md"><Download size={16} /> Markdown</a>
-                  <a className="button secondary" href={pdfUrl} download="proposal.pdf"><Download size={16} /> PDF</a>
-                </div>
-              </div>
+              )}
 
-              <div className="grid-two">
-                <div className="panel">
-                  <h3>Resource Plan</h3>
-                  <ul className="list">
-                    {result.proposal.resourcePlan.teamComposition.map((item) => (
-                      <li key={item.role}>{item.role}: {item.fte} FTE for {item.months} months</li>
-                    ))}
-                  </ul>
+              {resultItems.map((item, index) => (
+                <div key={item.fileName} className="panel stack">
+                  <h2>{item.rfp.projectName}</h2>
+                  <div className="metrics">
+                    <div className="metric"><span>Confidence</span><strong>{item.proposal.confidenceScore}%</strong></div>
+                    <div className="metric"><span>Total Budget</span><strong>{usd(item.proposal.costEstimate.totalBudget)}</strong></div>
+                    <div className="metric"><span>Timeline</span><strong>{item.proposal.timeline.durationWeeks} weeks</strong></div>
+                    <div className="metric"><span>Efficiency Gain</span><strong>{item.proposal.roi.efficiencyGainPercent}%</strong></div>
+                  </div>
+
+                  {/* Add Agent Status Panel - Directly below metrics */}
+                  <div className="panel">
+                    <h3>Agent Status</h3>
+                    <ul className="list">
+                      {item.proposal.agentOutputs.map((output) => (
+                        <li key={output.agent}>
+                          {output.title}
+                          {" - "}
+                          {Math.round(output.confidence * 100)}% confidence
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Add Executive Recommendation Panel - Below metrics */}
+                  <div className="panel">
+                    <h3>Bid Recommendation</h3>
+                    <p>{item.proposal.bidRecommendation}</p>
+                  </div>
+
+                  <div className="button-row">
+                    <a className="button secondary" href={markdownUrls[index]?.url} download={`${item.fileName}-proposal.md`}><Download size={16} /> Markdown</a>
+                    <a className="button secondary" href={pdfUrls[index]?.url} download={`${item.fileName}-proposal.pdf`}><Download size={16} /> PDF</a>
+                  </div>
+
+                  <div className="grid-two">
+                    <div className="panel">
+                      <h3>Resource Plan</h3>
+                      <ul className="list">
+                        {item.proposal.resourcePlan.teamComposition.map((row) => (
+                          <li key={row.role}>{row.role}: {row.fte} FTE for {row.months} months</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="panel">
+                      <h3>Communication Log</h3>
+                      <ul className="list">
+                        {item.proposal.agentConversation.slice(0, 25).map((message, messageIndex) => (
+                          <li key={`${message.from}-${message.to}-${messageIndex}`}>
+                            <strong>{message.from}</strong>
+                            {" → "}
+                            {message.to}
+                            <br />
+                            {message.content}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Add Compliance Matrix */}
+                  <div className="panel">
+                    <h3>Compliance Matrix</h3>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Requirement</th>
+                          <th>Status</th>
+                          <th>Owner</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {item.proposal.complianceMatrix.map((row, index) => (
+                          <tr key={index}>
+                            <td>{row.requirement}</td>
+                            <td>{row.status}</td>
+                            <td>{row.owner}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Real Agent Chat Panel - Add this block above Validation */}
+                  <div className="panel">
+                    <h2>Agent Collaboration Timeline</h2>
+                    <div className="stack">
+                      {item.proposal.agentConversation.map((message, idx) => (
+                        <div key={`${message.from}-${idx}`} className="panel">
+                          <div>
+                            <strong>{message.from.toUpperCase()}</strong>
+                            {" → "}
+                            {message.to}
+                          </div>
+                          <div style={{ marginTop: 8 }}>
+                            {message.content}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="panel">
-                  <h3>Validation</h3>
-                  <ul className="list">
-                    {result.proposal.consistencyChecks.map((check) => (
-                      <li key={`${check.category}-${check.message}`}>{check.severity.toUpperCase()}: {check.message}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+              ))}
 
               <div className="panel">
-                <h3>Generated Markdown</h3>
-                <pre className="markdown">{result.markdown}</pre>
+                <h3>Validation</h3>
+                <ul className="list">
+                  {resultItems.flatMap((item) => item.proposal.consistencyChecks.map((check) => (
+                    <li key={`${item.fileName}-${check.category}-${check.message}`}>{check.severity.toUpperCase()}: {check.message}</li>
+                  )))}
+                </ul>
               </div>
             </>
           )}

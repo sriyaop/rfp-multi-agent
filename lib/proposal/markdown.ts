@@ -26,9 +26,6 @@ ${proposal.resourcePlan.teamComposition.map((item) => `- ${item.role}: ${item.ft
 - Estimated completion date: ${proposal.timeline.estimatedCompletionDate}
 ${proposal.timeline.phases.map((phase) => `- ${phase.name}: ${phase.weeks} weeks - ${phase.output}`).join("\n")}
 
-## Technical Architecture
-${proposal.technicalArchitecture.architecture.map((item) => `- ${item}`).join("\n")}
-
 ### Technology Stack
 ${proposal.technicalArchitecture.techStack.map((item) => `- ${item}`).join("\n")}
 
