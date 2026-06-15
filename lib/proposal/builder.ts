@@ -155,6 +155,7 @@ Reasoning:
 - Strong solution fit for a ${signals.complexity.toLowerCase()} complexity ${signals.domain} initiative
 - Delivery risks identified from the RFP and reflected in mitigations
 - Staffing model sized at ${resource.totalFte} FTE / ${resource.effortPersonMonths} person-months
+- Effort estimate includes ${resource.estimatedHours.toLocaleString()} delivery hours
 - Budget aligns with AI-derived scope, integration and compliance signals
 - Architecture supports the extracted technical and operational requirements
 `;
@@ -194,6 +195,8 @@ RESOURCE PLAN
 ${resource.totalFte} FTE
 
 ${resource.effortPersonMonths} Person Months
+
+${resource.estimatedHours.toLocaleString()} Estimated Hours
 
 TIMELINE
 

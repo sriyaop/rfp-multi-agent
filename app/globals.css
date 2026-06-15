@@ -286,6 +286,21 @@ input {
   border-color: #fedf89;
 }
 
+.timeline-message.event-ai {
+  background: #f0fbfc;
+  border-color: #99d6dd;
+}
+
+.timeline-message.event-code {
+  background: #f7f7f8;
+  border-color: #d0d5dd;
+}
+
+.timeline-message.event-calculation {
+  background: #f4f7ff;
+  border-color: #c7d7fe;
+}
+
 .timeline-message.event-handoff {
   background: #f8f9fc;
   border-style: dashed;
@@ -341,6 +356,21 @@ input {
 .message-icon {
   color: var(--ok);
   border-color: #abefc6;
+}
+
+.ai-icon {
+  color: var(--primary);
+  border-color: #99d6dd;
+}
+
+.code-icon {
+  color: #475467;
+  border-color: #d0d5dd;
+}
+
+.calculation-icon {
+  color: #3538cd;
+  border-color: #c7d7fe;
 }
 
 .event-type {

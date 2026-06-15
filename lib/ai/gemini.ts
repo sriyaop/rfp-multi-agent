@@ -125,6 +125,73 @@ ${userPrompt}
     throw lastError;
   }
 
+  async completeWithInlineData(
+    prompt: string,
+    inlineData: {
+      mimeType: string;
+      data: string;
+    }
+  ): Promise<string> {
+
+    let lastError: unknown;
+
+    for (const model of this.modelCandidates) {
+      for (
+        let attempt = 1;
+        attempt <= this.maxAttempts;
+        attempt++
+      ) {
+        try {
+
+          const response =
+            await Promise.race([
+              this.client.models.generateContent({
+                model,
+                contents: [
+                  { text: prompt },
+                  { inlineData }
+                ]
+              }),
+              new Promise<never>((_, reject) => {
+                setTimeout(
+                  () => reject(new Error("Gemini document request timed out.")),
+                  this.timeoutMs
+                );
+              })
+            ]);
+
+          return (
+            response.text ?? ""
+          );
+
+        } catch (error) {
+
+          lastError = error;
+
+          console.error(
+            `Gemini document attempt ${attempt} failed for model ${model}`
+          );
+
+          console.error(error);
+
+          if (attempt < this.maxAttempts) {
+
+            await new Promise(
+              resolve =>
+                setTimeout(
+                  resolve,
+                  attempt * 3000
+                )
+            );
+
+          }
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
   async generateJson<T>(
     systemPrompt: string,
     userPrompt: string
@@ -164,6 +231,58 @@ No explanations.
 
       console.error(
         "Failed Gemini JSON:"
+      );
+
+      console.error(
+        cleaned
+      );
+
+      throw error;
+    }
+  }
+
+  async generateJsonWithInlineData<T>(
+    prompt: string,
+    inlineData: {
+      mimeType: string;
+      data: string;
+    }
+  ): Promise<T> {
+
+    const response =
+      await this.completeWithInlineData(
+        `
+${prompt}
+
+IMPORTANT:
+
+Return ONLY valid JSON.
+
+No markdown.
+
+No code fences.
+
+No explanations.
+`,
+        inlineData
+      );
+
+    const cleaned =
+      response
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
+
+    try {
+
+      return JSON.parse(
+        cleaned
+      ) as T;
+
+    } catch (error) {
+
+      console.error(
+        "Failed Gemini inline-data JSON:"
       );
 
       console.error(

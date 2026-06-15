@@ -130,6 +130,8 @@ export interface ResourcePlan {
 
   effortPersonMonths: number;
 
+  estimatedHours: number;
+
   allocationPlan: string[];
 
   staffingStrategy: string[];

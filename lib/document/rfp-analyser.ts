@@ -44,10 +44,47 @@ export async function analyzeRfpWithAI(
   const gemini = new GeminiClient();
 
   const analysis = await gemini.generateJson<unknown>(
+    RFP_ANALYSIS_PROMPT,
     `
+RFP CONTENT:
+
+${text.slice(0, 24000)}
+`
+  );
+
+  return normalizeAiRfpAnalysis(analysis);
+} 
+
+export async function analyzeRfpFileWithAI(
+  file: {
+    data: Buffer;
+    mimeType: string;
+    fileName: string;
+  }
+): Promise<RfpAnalysis> {
+  const gemini = new GeminiClient();
+
+  const analysis = await gemini.generateJsonWithInlineData<unknown>(
+    `
+${RFP_ANALYSIS_PROMPT}
+
+Analyze the attached RFP file directly. If the PDF is scanned or image-based, use visual document understanding to read the pages before extracting requirements.
+
+Uploaded file name: ${file.fileName}
+`,
+    {
+      mimeType: file.mimeType,
+      data: file.data.toString("base64")
+    }
+  );
+
+  return normalizeAiRfpAnalysis(analysis);
+}
+
+const RFP_ANALYSIS_PROMPT = `
 You are a senior proposal consultant.
 
-Analyze the uploaded RFP analysis document.
+Analyze the uploaded RFP document.
 
 Extract ALL useful proposal intelligence.
 
@@ -62,6 +99,15 @@ Focus on:
 - staffing
 - evaluation criteria
 - proposal strategy
+
+Strict hallucination controls:
+
+- Do not invent client budgets, deadlines, dates, quantities or legal constraints.
+- If the RFP does not state a budget, put "Budget not specified in RFP" in budgetInformation.
+- If the RFP does not state a deadline, put "Deadline not specified in RFP" in timelineInformation.
+- Separate facts found in the RFP from proposal recommendations.
+- Use concise, auditable phrases that can be traced back to the uploaded document.
+- Extract exact named technologies, standards, integrations, compliance requirements and submission requirements when present.
 
 Return ONLY valid JSON with this exact top-level structure:
 
@@ -90,16 +136,7 @@ Return ONLY valid JSON with this exact top-level structure:
 }
 
 Every array must exist. Use an empty array only when the RFP genuinely has no relevant information.
-`,
-    `
-RFP CONTENT:
-
-${text.slice(0, 24000)}
-`
-  );
-
-  return normalizeAiRfpAnalysis(analysis);
-} 
+`;
 
 function normalizeAiRfpAnalysis(
   value: unknown

@@ -13,6 +13,7 @@ ${proposal.executiveSummary}
 ## Resource Plan
 - Total FTE: ${proposal.resourcePlan.totalFte}
 - Effort: ${proposal.resourcePlan.effortPersonMonths} person-months
+- Estimated hours: ${proposal.resourcePlan.estimatedHours.toLocaleString()} hours
 ${proposal.resourcePlan.teamComposition.map((item) => `- ${item.role}: ${item.fte} FTE for ${item.months} months`).join("\n")}
 
 ## Cost Estimate
@@ -54,6 +55,11 @@ ${proposal.reviewCycle.length > 0 ? proposal.reviewCycle.map((item) => `- ${item
 - Efficiency gain: ${proposal.roi.efficiencyGainPercent}%
 
 ${proposal.roi.summary}
+
+## POC Comparison
+- Manual RFP analysis baseline: document reading, requirement extraction, solution planning, costing, timeline estimation and proposal drafting.
+- Automated workflow: Gemini RFP intelligence plus CEO-led specialist agents for scope, architecture, staffing, cost, timeline, risk and proposal assembly.
+- Proof-of-concept result: ${proposal.roi.timeSavedHours} estimated hours saved on this RFP with ${proposal.roi.efficiencyGainPercent}% efficiency gain.
 
 ## Final Proposal
 ${proposal.finalProposal}

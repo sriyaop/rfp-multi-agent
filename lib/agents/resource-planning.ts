@@ -73,6 +73,9 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
         0
       );
 
+    const estimatedHours =
+      effortPersonMonths * 160;
+
     return {
       agent: this.role,
 
@@ -88,6 +91,7 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
         teamComposition,
         totalFte,
         effortPersonMonths,
+        estimatedHours,
 
         allocationPlan: [
           "Discovery & Design",

@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
+  Calculator,
   Clock3,
+  Code2,
   Cpu,
   Download,
   FileText,
@@ -24,15 +26,23 @@ interface ApiResultItem {
   markdown: string;
   pdfBase64: string;
   fileName: string;
+  extraction?: {
+    pageCount?: number;
+    characterCount: number;
+    quality: "good" | "weak" | "failed";
+    warnings: string[];
+    analysisSource: "gemini-text" | "gemini-file" | "deterministic";
+  };
 }
 
 type ApiResult = ApiResultItem;
 type ExecutionState = "idle" | "processing" | "replaying" | "complete";
-type AgentEventType = "thinking" | "tool" | "handoff" | "message";
+type AgentEventType = "ai" | "code" | "calculation" | "thinking" | "tool" | "handoff" | "message";
+type EventActor = AgentRole | "system" | "gemini" | "api" | "builder" | "pdf";
 
 interface AgentEvent {
   type: AgentEventType;
-  agent: AgentRole;
+  agent: EventActor;
   target: AgentRole | "all";
   content: string;
   createdAt: string;
@@ -116,6 +126,30 @@ function getAgentLabel(agent: AgentRole) {
   return agentLabels[agent] ?? { name: agent, role: "Agent" };
 }
 
+function getActorLabel(actor: EventActor) {
+  if (actor === "system") {
+    return { name: "Upload Runtime", role: "Input" };
+  }
+
+  if (actor === "gemini") {
+    return { name: "Gemini AI", role: "RFP Intelligence" };
+  }
+
+  if (actor === "api") {
+    return { name: "Proposal API", role: "Route" };
+  }
+
+  if (actor === "builder") {
+    return { name: "Proposal Builder", role: "Assembly" };
+  }
+
+  if (actor === "pdf") {
+    return { name: "PDF Renderer", role: "Export" };
+  }
+
+  return getAgentLabel(actor);
+}
+
 function getToolName(agent: AgentRole) {
   const tools: Record<AgentRole, string> = {
     ceo: "strategy_planner",
@@ -180,6 +214,131 @@ function buildAgentEvents(messages: AgentMessage[]): AgentEvent[] {
   ]);
 }
 
+function buildExecutionEvents(result: ApiResult | null): AgentEvent[] {
+  if (!result) {
+    return buildAgentEvents(fallbackMessages);
+  }
+
+  const now = new Date().toISOString();
+  const rfp = result.rfp;
+  const proposal = result.proposal;
+  const codeEvents: AgentEvent[] = [
+    {
+      type: "code",
+      agent: "system",
+      target: "all",
+      content: `Upload received: ${result.fileName}. Browser sends FormData to app/api/proposals/route.ts.`,
+      createdAt: now
+    },
+    {
+      type: "code",
+      agent: "api",
+      target: "all",
+      content: result.extraction
+        ? `Invoking extractDocumentFromFile() in lib/document/extractor.ts. Extracted ${result.extraction.characterCount.toLocaleString()} characters${result.extraction.pageCount ? ` from ${result.extraction.pageCount} pages` : ""}. Quality: ${result.extraction.quality}.`
+        : "Invoking extractDocumentFromFile() in lib/document/extractor.ts to read PDF/DOCX/TXT content.",
+      createdAt: now
+    },
+    {
+      type: "ai",
+      agent: "gemini",
+      target: "all",
+      content: `${result.extraction?.analysisSource === "gemini-file" ? "Text extraction was weak, so the system called analyzeRfpFileWithAI() and asked Gemini to read the PDF directly." : "Calling analyzeRfpWithAI() in lib/document/rfp-analyser.ts."} AI extracted ${rfp.functionalRequirements.length} functional requirements, ${rfp.technicalRequirements.length} technical requirements, ${rfp.scopeItems.length} scope items and ${rfp.risks.length} risk signals.`,
+      createdAt: now
+    },
+    {
+      type: "code",
+      agent: "gemini",
+      target: "all",
+      content: "Normalizing Gemini JSON into the RfpAnalysis schema expected by the agents.",
+      createdAt: now
+    },
+    {
+      type: "handoff",
+      agent: "api",
+      target: "ceo",
+      content: "Starting ProposalOrchestrator.run() in lib/agents/orchestrator.ts with AI-derived RFP analysis.",
+      createdAt: now
+    }
+  ];
+
+  const agentEvents = proposal.agentConversation.length
+    ? buildAgentEvents(proposal.agentConversation)
+    : buildAgentEvents(fallbackMessages);
+
+  const calculationEvents: AgentEvent[] = [
+    {
+      type: "calculation",
+      agent: "productManager",
+      target: "cto",
+      content: `Product Manager maps ${proposal.userStories.length} user stories and ${proposal.complianceMatrix.length} compliance rows from AI-extracted requirements.`,
+      createdAt: now
+    },
+    {
+      type: "calculation",
+      agent: "cto",
+      target: "resourcePlanning",
+      content: `CTO selects architecture and technology stack: ${proposal.technicalArchitecture.techStack.join(", ")}.`,
+      createdAt: now
+    },
+    {
+      type: "calculation",
+      agent: "resourcePlanning",
+      target: "costEstimation",
+      content: `Resource Planning calculates ${proposal.resourcePlan.totalFte} FTE, ${proposal.resourcePlan.effortPersonMonths} person-months and ${proposal.resourcePlan.estimatedHours.toLocaleString()} estimated delivery hours from role allocations.`,
+      createdAt: now
+    },
+    {
+      type: "calculation",
+      agent: "costEstimation",
+      target: "timeline",
+      content: `Cost Estimation computes development ${usd(proposal.costEstimate.developmentCost)}, infrastructure ${usd(proposal.costEstimate.infrastructureCost)}, licensing ${usd(proposal.costEstimate.licensingCost)}, contingency ${usd(proposal.costEstimate.contingencyCost)} and total ${usd(proposal.costEstimate.totalBudget)}.`,
+      createdAt: now
+    },
+    {
+      type: "calculation",
+      agent: "timeline",
+      target: "risk",
+      content: `Timeline Agent creates a ${proposal.timeline.durationWeeks}-week roadmap ending ${proposal.timeline.estimatedCompletionDate}.`,
+      createdAt: now
+    },
+    {
+      type: "calculation",
+      agent: "risk",
+      target: "ceo",
+      content: `Risk Agent evaluates ${proposal.riskAssessment.technicalRisks.length} technical, ${proposal.riskAssessment.deliveryRisks.length} delivery, ${proposal.riskAssessment.budgetRisks.length} budget and ${proposal.riskAssessment.complianceRisks.length} compliance risks.`,
+      createdAt: now
+    },
+    {
+      type: "code",
+      agent: "builder",
+      target: "all",
+      content: "buildProposal() in lib/proposal/builder.ts consolidates specialist outputs into executive summary, solution, resource plan, cost, timeline, risks and conclusion.",
+      createdAt: now
+    },
+    {
+      type: "code",
+      agent: "pdf",
+      target: "all",
+      content: "renderMarkdown() and renderPdf() generate downloadable proposal artifacts.",
+      createdAt: now
+    },
+    {
+      type: "calculation",
+      agent: "builder",
+      target: "all",
+      content: `ROI/POC comparison estimates manual RFP effort at ${proposal.roi.manualEffortHours} hours versus ${proposal.roi.automatedEffortHours} automated hours, saving ${proposal.roi.timeSavedHours} hours (${proposal.roi.efficiencyGainPercent}% gain).`,
+      createdAt: now
+    }
+  ];
+
+  return [
+    ...codeEvents,
+    ...agentEvents,
+    ...calculationEvents
+  ];
+}
+
 function getEventIcon(type: AgentEventType) {
   switch (type) {
     case "thinking":
@@ -190,6 +349,12 @@ function getEventIcon(type: AgentEventType) {
       return <Send size={15} />;
     case "message":
       return <MessageSquareText size={15} />;
+    case "ai":
+      return <Cpu size={15} />;
+    case "code":
+      return <Code2 size={15} />;
+    case "calculation":
+      return <Calculator size={15} />;
   }
 }
 
@@ -209,13 +374,9 @@ export function ProposalWorkbench() {
 
   const resultItems = result ? [result] : [];
   const activeResult = resultItems[0];
-  const conversation =
-    activeResult?.proposal.agentConversation.length
-      ? activeResult.proposal.agentConversation
-      : fallbackMessages;
   const agentEvents = useMemo(
-    () => buildAgentEvents(conversation),
-    [conversation]
+    () => buildExecutionEvents(activeResult ?? null),
+    [activeResult]
   );
   const visibleEvents = agentEvents.slice(0, visibleMessages);
   const progress =
@@ -261,7 +422,12 @@ export function ProposalWorkbench() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error ?? "Proposal generation failed.");
+        const detailText =
+          data.details?.warnings?.length
+            ? ` ${data.details.warnings.join(" ")}`
+            : "";
+
+        setError(`${data.error ?? "Proposal generation failed."}${detailText}`);
         setExecutionState("idle");
         return;
       }
@@ -394,7 +560,7 @@ export function ProposalWorkbench() {
                 )}
 
                 {visibleEvents.map((event, index) => {
-                  const agent = getAgentLabel(event.agent);
+                  const agent = getActorLabel(event.agent);
                   const isActive =
                     executionState === "replaying" && index === visibleEvents.length - 1;
 
@@ -492,6 +658,8 @@ export function ProposalWorkbench() {
                         {row.role}: {row.fte} FTE for {row.months} months
                       </li>
                     ))}
+                    <li>Estimated effort: {activeResult.proposal.resourcePlan.effortPersonMonths} person-months</li>
+                    <li>Estimated hours: {activeResult.proposal.resourcePlan.estimatedHours.toLocaleString()} hours</li>
                   </ul>
                 </section>
 
@@ -526,6 +694,17 @@ export function ProposalWorkbench() {
                     {activeResult.proposal.riskAssessment.deliveryRisks.map((risk) => (
                       <li key={risk}>{risk}</li>
                     ))}
+                  </ul>
+                </section>
+
+                <section className="preview-section">
+                  <h3>ROI & POC Comparison</h3>
+                  <p>{activeResult.proposal.roi.summary}</p>
+                  <ul className="list compact-list">
+                    <li>Manual effort baseline: {activeResult.proposal.roi.manualEffortHours} hours</li>
+                    <li>Automated effort: {activeResult.proposal.roi.automatedEffortHours} hours</li>
+                    <li>Time saved: {activeResult.proposal.roi.timeSavedHours} hours</li>
+                    <li>Efficiency gain: {activeResult.proposal.roi.efficiencyGainPercent}%</li>
                   </ul>
                 </section>
 
