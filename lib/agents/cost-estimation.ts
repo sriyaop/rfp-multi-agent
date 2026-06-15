@@ -7,6 +7,7 @@ import {
   ReviewFinding,
   WorkflowState
 } from "@/lib/types";
+import { getProjectSignals } from "@/lib/agents/rfp-intelligence";
 
 export class CostEstimationAgent extends BaseAgent<CostPlan> {
 
@@ -25,17 +26,13 @@ export class CostEstimationAgent extends BaseAgent<CostPlan> {
       state.outputs.resourcePlanning
         ?.findings as ResourcePlan;
 
-    const intelligence =
-      (state.rfp as any)
-        .intelligence;
-
-    const complexity =
-      intelligence?.complexity;
+    const signals =
+      getProjectSignals(state.rfp);
 
     const rate =
-      complexity === "High"
+      signals.complexity === "High"
         ? 18000
-        : complexity === "Medium"
+        : signals.complexity === "Medium"
         ? 14000
         : 10000;
 
@@ -44,19 +41,19 @@ export class CostEstimationAgent extends BaseAgent<CostPlan> {
 
     const infrastructureCost =
       Math.max(
-        10000,
-        Math.round(developmentCost * 0.10)
+        signals.domain === "erp" ? 35000 : signals.domain === "website" ? 18000 : 10000,
+        Math.round(developmentCost * (signals.integrationCount > 2 ? 0.14 : 0.10))
       );
 
     const licensingCost =
       Math.max(
-        5000,
-        Math.round(developmentCost * 0.05)
+        signals.domain === "erp" ? 45000 : signals.domain === "website" ? 12000 : 5000,
+        Math.round(developmentCost * (signals.domain === "erp" ? 0.10 : 0.05))
       );
 
     const contingencyCost =
       Math.round(
-        developmentCost * 0.15
+        developmentCost * (signals.complexity === "High" ? 0.20 : 0.15)
       );
 
     const supportCost =
@@ -93,13 +90,16 @@ export class CostEstimationAgent extends BaseAgent<CostPlan> {
         currency: "USD",
 
         costDrivers: [
-          "Development effort",
-          "Infrastructure",
-          "QA effort"
+          `${signals.complexity} AI-derived scope complexity`,
+          `${resource.effortPersonMonths} person-month delivery effort`,
+          signals.integrationCount > 0 ? `${signals.integrationCount} integration/compliance signals` : "Limited integration scope",
+          `${signals.domain} delivery profile`
         ],
 
         pricingAssumptions: [
-          `$${rate.toLocaleString()} per person-month`
+          `$${rate.toLocaleString()} per person-month`,
+          `Rate selected from AI-inferred ${signals.complexity.toLowerCase()} complexity.`,
+          "Final price subject to discovery validation and procurement scope confirmation."
         ],
 
         paymentMilestones: [

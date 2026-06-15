@@ -5,6 +5,10 @@ import {
   TechnicalPlan,
   WorkflowState
 } from "@/lib/types";
+import {
+  getProjectSignals,
+  pickRelevantItems
+} from "@/lib/agents/rfp-intelligence";
 
 export class CTOAgent extends BaseAgent<TechnicalPlan> {
 
@@ -19,30 +23,29 @@ export class CTOAgent extends BaseAgent<TechnicalPlan> {
     state: WorkflowState
   ): Promise<AgentOutput<TechnicalPlan>> {
 
-    const requirementsText =
-      JSON.stringify(
-        state.rfp.technicalRequirements
-      ).toLowerCase();
-
-    const mobile =
-      requirementsText.includes("mobile");
+    const signals =
+      getProjectSignals(state.rfp);
 
     const integrations =
-      state.rfp.technicalRequirements.filter(
+      [...state.rfp.technicalRequirements, ...state.rfp.scopeItems].filter(
         item =>
           item.toLowerCase().includes("api") ||
-          item.toLowerCase().includes("integration")
+          item.toLowerCase().includes("integration") ||
+          item.toLowerCase().includes("migration") ||
+          item.toLowerCase().includes("interface")
       );
 
-    const techStack = [
-      "Next.js",
-      "TypeScript",
-      "Node.js",
-      "PostgreSQL"
-    ];
+    const techStack =
+      signals.domain === "erp"
+        ? ["ERP Platform", "Workflow Engine", "Integration Middleware", "PostgreSQL", "Reporting/BI Layer"]
+        : signals.domain === "website"
+        ? ["Enterprise CMS", "Next.js", "TypeScript", "Search Platform", "CDN/WAF"]
+        : signals.domain === "mobile"
+        ? ["React Native", "API Gateway", "Node.js", "PostgreSQL", "Push Notification Service"]
+        : ["Next.js", "TypeScript", "Node.js", "PostgreSQL"];
 
-    if (mobile) {
-      techStack.push("React Native");
+    if (signals.complianceCount > 0) {
+      techStack.push("IAM/SSO", "Audit Logging");
     }
 
     return {
@@ -58,38 +61,40 @@ export class CTOAgent extends BaseAgent<TechnicalPlan> {
 
       findings: {
         architectureOverview:
-          "Layered enterprise architecture with frontend, backend APIs, database and integrations.",
+          `AI-derived ${signals.domain} architecture for ${state.rfp.projectName}, with ${signals.integrationCount} integration/compliance signals and a ${signals.complexity.toLowerCase()} complexity profile.`,
 
-        frontendArchitecture: [
-          "Next.js Application",
-          "Responsive UI",
-          "Role Based Access"
-        ],
+        frontendArchitecture:
+          signals.domain === "erp"
+            ? ["Role-based operational workspaces", "Approval dashboards", "Financial reporting views"]
+            : signals.domain === "website"
+            ? ["Accessible responsive website", "CMS authoring workflows", "Site search and content templates"]
+            : ["Responsive UI", "Role Based Access", "User workflow screens"],
 
-        backendArchitecture: [
-          "REST APIs",
-          "Business Services Layer",
-          "Validation Layer"
-        ],
+        backendArchitecture: pickRelevantItems(
+          state.rfp.technicalRequirements,
+          ["API services", "Business workflow services", "Validation and rules layer"]
+        ),
 
         databaseArchitecture: [
-          "PostgreSQL",
-          "Relational Data Model",
-          "Backup Strategy"
+          signals.domain === "erp" ? "Financial and operational data model" : "Relational data model",
+          "Reporting-ready schema",
+          "Backup and recovery strategy"
         ],
 
-        securityArchitecture: [
-          "Authentication",
-          "Authorization",
-          "Audit Logging"
-        ],
+        securityArchitecture: pickRelevantItems(
+          state.rfp.constraints.filter((item) => /security|audit|access|privacy|compliance|wcag|ada/i.test(item)),
+          ["Authentication", "Authorization", "Audit Logging"]
+        ),
 
         deploymentArchitecture: [
           "Cloud Hosting",
           "CI/CD Pipeline"
         ],
 
-        integrations,
+        integrations: pickRelevantItems(
+          integrations,
+          ["Integration scope to be confirmed during discovery"]
+        ),
 
         monitoringStrategy: [
           "Application Monitoring",
@@ -104,15 +109,15 @@ export class CTOAgent extends BaseAgent<TechnicalPlan> {
           "API Layer Separation"
         ],
 
-        technicalRisks: [
-          "Integration complexity",
-          "Requirement volatility"
-        ],
+        technicalRisks: pickRelevantItems(
+          state.rfp.risks.filter((item) => /technical|integration|security|data|migration|legacy/i.test(item)),
+          ["Integration complexity", "Requirement volatility"]
+        ),
 
         architectureRationale: [
-          "Supports future growth",
-          "Reduces operational risk",
-          "Improves maintainability"
+          `Matches the AI-identified ${signals.domain} project profile.`,
+          "Addresses the highest-signal technical and compliance requirements.",
+          "Keeps integration, reporting and operational risk visible from design onward."
         ]
       },
 

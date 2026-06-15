@@ -2,13 +2,15 @@ import { BaseAgent } from "@/lib/agents/base";
 
 import {
   AgentOutput,
-  CostPlan,
   ProductPlan,
   RiskPlan,
-  TechnicalPlan,
   TimelinePlan,
   WorkflowState
 } from "@/lib/types";
+import {
+  getProjectSignals,
+  pickRelevantItems
+} from "@/lib/agents/rfp-intelligence";
 
 export class RiskAgent extends BaseAgent<RiskPlan> {
 
@@ -23,10 +25,6 @@ export class RiskAgent extends BaseAgent<RiskPlan> {
     state: WorkflowState
   ): Promise<AgentOutput<RiskPlan>> {
 
-    const technical =
-      state.outputs.cto
-        ?.findings as TechnicalPlan;
-
     const timeline =
       state.outputs.timeline
         ?.findings as TimelinePlan;
@@ -35,14 +33,13 @@ export class RiskAgent extends BaseAgent<RiskPlan> {
       state.outputs.productManager
         ?.findings as ProductPlan;
 
-    const cost =
-      state.outputs.costEstimation
-        ?.findings as CostPlan;
+    const signals =
+      getProjectSignals(state.rfp);
 
-    const deliveryRisks = [
-      "Requirement changes",
-      "Stakeholder delays"
-    ];
+    const deliveryRisks = pickRelevantItems(
+      state.rfp.risks.filter((item) => /schedule|timeline|stakeholder|approval|delay|training|adoption|cutover/i.test(item)),
+      ["Requirement changes", "Stakeholder delays"]
+    );
 
     if (
       timeline.durationWeeks < 16 &&
@@ -65,29 +62,35 @@ export class RiskAgent extends BaseAgent<RiskPlan> {
       ],
 
       findings: {
-        technicalRisks: [
-          "Integration complexity",
-          "Production deployment issues"
-        ],
+        technicalRisks: pickRelevantItems(
+          state.rfp.risks.filter((item) => /technical|integration|security|data|migration|legacy|cms|erp/i.test(item)),
+          signals.domain === "erp"
+            ? ["ERP data migration complexity", "Legacy system integration risk"]
+            : signals.domain === "website"
+            ? ["CMS migration and search tuning risk", "Accessibility compliance risk"]
+            : ["Integration complexity", "Production deployment issues"]
+        ),
 
         deliveryRisks,
 
-        budgetRisks: [
-          "Scope expansion"
-        ],
+        budgetRisks: pickRelevantItems(
+          state.rfp.risks.filter((item) => /budget|cost|license|procurement|scope/i.test(item)),
+          ["Scope expansion"]
+        ),
 
-        complianceRisks: [
-          "Security review delays"
-        ],
+        complianceRisks: pickRelevantItems(
+          state.rfp.constraints.filter((item) => /security|compliance|privacy|wcag|ada|audit|legal/i.test(item)),
+          signals.complianceCount > 0 ? ["Compliance validation delays"] : ["Security review delays"]
+        ),
 
         mitigations: [
-          "Incremental delivery",
+          signals.domain === "erp" ? "Pilot migration with reconciliation checkpoints" : "Incremental delivery",
           "Weekly governance review",
-          "Architecture validation"
+          signals.domain === "website" ? "Accessibility and content QA gates" : "Architecture validation"
         ],
 
         riskSummary:
-          "Project is achievable with active risk monitoring."
+          `${state.rfp.projectName} is achievable with active management of ${signals.domain} delivery risks, ${signals.integrationCount} integration signals and ${signals.complianceCount} compliance signals.`
       },
 
       reviewNotes: []

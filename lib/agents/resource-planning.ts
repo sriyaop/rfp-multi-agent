@@ -2,11 +2,10 @@ import { BaseAgent } from "@/lib/agents/base";
 
 import {
   AgentOutput,
-  ProductPlan,
   ResourcePlan,
-  TechnicalPlan,
   WorkflowState
 } from "@/lib/types";
+import { getProjectSignals } from "@/lib/agents/rfp-intelligence";
 
 export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
 
@@ -21,42 +20,33 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
     state: WorkflowState
   ): Promise<AgentOutput<ResourcePlan>> {
 
-    const product =
-      state.outputs.productManager
-        ?.findings as ProductPlan;
-
-    const technical =
-      state.outputs.cto
-        ?.findings as TechnicalPlan;
-
-    const intelligence =
-      (state.rfp as any)
-        .intelligence;
-
-    const recommendedSize =
-      intelligence?.recommendedTeamSize;
+    const signals =
+      getProjectSignals(state.rfp);
 
     let teamComposition;
 
-    if (recommendedSize >= 12) {
+    if (signals.domain === "erp" || signals.complexity === "High") {
 
       teamComposition = [
-        { role: "Project Manager", fte: 1, months: 12 },
-        { role: "Solution Architect", fte: 2, months: 10 },
-        { role: "Senior Developer", fte: 5, months: 12 },
-        { role: "QA Engineer", fte: 3, months: 10 },
-        { role: "DevOps Engineer", fte: 2, months: 8 }
+        { role: "Program Manager", fte: 1, months: 10 },
+        { role: "Solution Architect", fte: 1, months: 8 },
+        { role: signals.domain === "erp" ? "ERP Functional Consultant" : "Senior Business Analyst", fte: 2, months: 8 },
+        { role: "Senior Developer", fte: 3, months: 9 },
+        { role: "Integration Engineer", fte: Math.max(1, Math.min(2, signals.integrationCount)), months: 7 },
+        { role: "QA Engineer", fte: 2, months: 7 },
+        { role: "DevOps Engineer", fte: 1, months: 5 }
       ];
 
     }
-    else if (recommendedSize >= 8) {
+    else if (signals.domain === "website" || signals.complexity === "Medium") {
 
       teamComposition = [
         { role: "Project Manager", fte: 1, months: 8 },
-        { role: "Solution Architect", fte: 1, months: 6 },
-        { role: "Senior Developer", fte: 3, months: 8 },
+        { role: "UX/UI Lead", fte: 1, months: 5 },
+        { role: signals.domain === "website" ? "CMS Developer" : "Senior Developer", fte: 2, months: 7 },
+        { role: "Frontend Developer", fte: 2, months: 6 },
         { role: "QA Engineer", fte: 2, months: 6 },
-        { role: "DevOps Engineer", fte: 1, months: 4 }
+        { role: "DevOps Engineer", fte: 1, months: 3 }
       ];
 
     }
@@ -64,7 +54,7 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
 
       teamComposition = [
         { role: "Project Manager", fte: 1, months: 6 },
-        { role: "Developer", fte: 2, months: 6 },
+        { role: "Developer", fte: signals.suggestedTeamSize - 2, months: 6 },
         { role: "QA Engineer", fte: 1, months: 4 }
       ];
 
@@ -107,15 +97,15 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
         ],
 
         staffingStrategy: [
-          "Dedicated project team",
-          "Shared governance model"
+          `${signals.complexity} complexity team sized from AI-extracted scope.`,
+          `Staffing emphasizes ${signals.domain === "erp" ? "functional ERP expertise and integrations" : signals.domain === "website" ? "UX, CMS and accessibility delivery" : "implementation and QA execution"}.`
         ],
 
         criticalSkills: [
-          "Full Stack Development",
+          signals.domain === "erp" ? "ERP implementation" : signals.domain === "website" ? "CMS/web accessibility" : "Full Stack Development",
           "Architecture",
           "QA",
-          "DevOps"
+          signals.integrationCount > 0 ? "Integration engineering" : "DevOps"
         ],
 
         hiringRisks: [

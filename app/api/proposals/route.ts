@@ -4,11 +4,9 @@ import { ProposalOrchestrator } from "@/lib/agents/orchestrator";
 
 import { extractTextFromFile } from "@/lib/document/extractor";
 import { analyzeRfpText } from "@/lib/document/extractor";
+import { analyzeRfpWithAI } from "@/lib/document/rfp-analyser";
 import { renderMarkdown } from "@/lib/proposal/markdown";
 import { renderPdf } from "@/lib/proposal/pdf";
-import {
-  analyzeRfpWithAi
-} from "@/lib/ai/rfp-analyzer";
 
 export const runtime = "nodejs";
 
@@ -30,35 +28,45 @@ export async function POST(request: Request) {
     }
 
     const rawText = await extractTextFromFile(file);
-    const text = await extractTextFromFile(file);
-    const rfp =
-      analyzeRfpText(text);
+    let rfp;
 
     try {
 
-      const intelligence =
-        await analyzeRfpWithAi(
+      rfp =
+        await analyzeRfpWithAI(
           rawText
         );
 
       console.log(
-          "AI INTELLIGENCE SUCCESS",
-          intelligence
+        "AI RFP ANALYSIS SUCCESS"
       );
 
-      (rfp as any).intelligence =
-        intelligence;
-
+      console.log(
+        "AI RFP ANALYSIS COUNTS",
+        {
+          functionalRequirements: rfp.functionalRequirements.length,
+          technicalRequirements: rfp.technicalRequirements.length,
+          scopeItems: rfp.scopeItems.length,
+          risks: rfp.risks.length
+        }
+      );
     }
     catch (error) {
 
-      console.log(
-        "Gemini unavailable. Falling back."
+      console.error(
+        "AI RFP analysis failed after all configured attempts. Using emergency deterministic fallback."
       );
+
+      console.error(error);
+
+      rfp =
+        analyzeRfpText(
+          rawText
+        );
     }
 
     const proposal = await new ProposalOrchestrator().run(
-      rfp as any
+      rfp
     );
 
     const markdown = renderMarkdown(

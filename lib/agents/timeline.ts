@@ -2,13 +2,12 @@ import { BaseAgent } from "@/lib/agents/base";
 
 import {
   AgentOutput,
-  ProductPlan,
-  ResourcePlan,
   TimelinePlan,
   WorkflowState
 } from "@/lib/types";
 
 import { dateAfterWeeks } from "@/lib/utils";
+import { getProjectSignals } from "@/lib/agents/rfp-intelligence";
 
 export class TimelineAgent extends BaseAgent<TimelinePlan> {
 
@@ -23,21 +22,9 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
     state: WorkflowState
   ): Promise<AgentOutput<TimelinePlan>> {
 
-    const product =
-      state.outputs.productManager
-        ?.findings as ProductPlan;
-
-    const resource =
-      state.outputs.resourcePlanning
-        ?.findings as ResourcePlan;
-
-    const intelligence =
-      (state.rfp as any)
-        .intelligence;
-
     let durationWeeks =
-      intelligence?.recommendedTimelineWeeks
-      ?? 24;
+      getProjectSignals(state.rfp)
+        .suggestedTimelineWeeks;
 
     durationWeeks =
       Math.max(
@@ -46,7 +33,24 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
       );
 
 
-    const phases = [
+    const signals =
+      getProjectSignals(state.rfp);
+
+    const phases = signals.domain === "erp"
+      ? [
+        { name: "Discovery & Process Mapping", weeks: 5, output: "Current/future-state process design" },
+        { name: "ERP Configuration & Integrations", weeks: Math.max(10, durationWeeks - 20), output: "Configured ERP workflows and interfaces" },
+        { name: "Data Migration & Reporting", weeks: 5, output: "Validated migrated data and reports" },
+        { name: "UAT, Training & Go Live", weeks: 10, output: "Production cutover and user enablement" }
+      ]
+      : signals.domain === "website"
+      ? [
+        { name: "Discovery, Content Audit & UX", weeks: 5, output: "Validated information architecture and design system" },
+        { name: "CMS Implementation", weeks: Math.max(8, durationWeeks - 18), output: "Authoring workflows, templates and integrations" },
+        { name: "Accessibility, Search & QA", weeks: 6, output: "WCAG validation, content QA and search tuning" },
+        { name: "Launch Readiness", weeks: 7, output: "Deployment, training and production launch" }
+      ]
+      : [
       {
         name: "Discovery",
         weeks: 2,
@@ -92,8 +96,8 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
         phases,
 
         milestones: [
-          "Requirements Approved",
-          "Architecture Approved",
+          signals.domain === "erp" ? "Process Design Approved" : "Requirements Approved",
+          signals.domain === "website" ? "UX and CMS Design Approved" : "Architecture Approved",
           "Build Complete",
           "Go Live"
         ]

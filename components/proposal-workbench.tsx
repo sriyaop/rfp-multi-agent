@@ -1,11 +1,21 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  useEffect,
-  useMemo,
-  useState
-} from "react";import { Download, FileText, Loader2, ShieldCheck, Upload } from "lucide-react";
-import { Proposal, RfpAnalysis } from "@/lib/types";
+  CheckCircle2,
+  Clock3,
+  Cpu,
+  Download,
+  FileText,
+  Loader2,
+  MessageSquareText,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Wrench,
+  Upload
+} from "lucide-react";
+import { Proposal, RfpAnalysis, AgentMessage, AgentRole } from "@/lib/types";
 import { usd } from "@/lib/utils";
 
 interface ApiResultItem {
@@ -17,6 +27,171 @@ interface ApiResultItem {
 }
 
 type ApiResult = ApiResultItem;
+type ExecutionState = "idle" | "processing" | "replaying" | "complete";
+type AgentEventType = "thinking" | "tool" | "handoff" | "message";
+
+interface AgentEvent {
+  type: AgentEventType;
+  agent: AgentRole;
+  target: AgentRole | "all";
+  content: string;
+  createdAt: string;
+}
+
+const agentLabels: Record<AgentRole, { name: string; role: string }> = {
+  ceo: { name: "CEO Agent", role: "Strategy" },
+  productManager: { name: "Product Manager Agent", role: "Scope" },
+  cto: { name: "CTO Agent", role: "Architecture" },
+  resourcePlanning: { name: "Resource Planning Agent", role: "Staffing" },
+  costEstimation: { name: "Cost Estimation Agent", role: "Budget" },
+  timeline: { name: "Timeline Agent", role: "Roadmap" },
+  risk: { name: "Risk Analysis Agent", role: "Risk" }
+};
+
+const fallbackMessages: AgentMessage[] = [
+  {
+    from: "ceo",
+    to: "productManager",
+    content: "Analyzing client requirements and business objectives...",
+    createdAt: new Date().toISOString()
+  },
+  {
+    from: "productManager",
+    to: "cto",
+    content: "Identified functional and non-functional requirements...",
+    createdAt: new Date().toISOString()
+  },
+  {
+    from: "cto",
+    to: "resourcePlanning",
+    content: "Designing technical architecture and integrations...",
+    createdAt: new Date().toISOString()
+  },
+  {
+    from: "resourcePlanning",
+    to: "costEstimation",
+    content: "Estimating staffing requirements...",
+    createdAt: new Date().toISOString()
+  },
+  {
+    from: "costEstimation",
+    to: "timeline",
+    content: "Calculating implementation budget...",
+    createdAt: new Date().toISOString()
+  },
+  {
+    from: "timeline",
+    to: "risk",
+    content: "Preparing delivery roadmap...",
+    createdAt: new Date().toISOString()
+  },
+  {
+    from: "risk",
+    to: "ceo",
+    content: "Evaluating project risks and mitigation strategies...",
+    createdAt: new Date().toISOString()
+  },
+  {
+    from: "ceo",
+    to: "all",
+    content: "Review completed. Preparing final proposal...",
+    createdAt: new Date().toISOString()
+  }
+];
+
+function formatTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function getAgentLabel(agent: AgentRole) {
+  return agentLabels[agent] ?? { name: agent, role: "Agent" };
+}
+
+function getToolName(agent: AgentRole) {
+  const tools: Record<AgentRole, string> = {
+    ceo: "strategy_planner",
+    productManager: "requirements_mapper",
+    cto: "architecture_designer",
+    resourcePlanning: "staffing_estimator",
+    costEstimation: "budget_calculator",
+    timeline: "roadmap_builder",
+    risk: "risk_scanner"
+  };
+
+  return tools[agent];
+}
+
+function getThinkingText(agent: AgentRole) {
+  const text: Record<AgentRole, string> = {
+    ceo: "Thinking through bid strategy and delegation order...",
+    productManager: "Reading requirements and grouping scope into delivery themes...",
+    cto: "Evaluating architecture, integrations, security and platform fit...",
+    resourcePlanning: "Estimating roles, capacity and delivery coverage...",
+    costEstimation: "Calculating budget drivers and contingency...",
+    timeline: "Sequencing milestones and validating delivery duration...",
+    risk: "Scanning delivery, technical, budget and compliance risks..."
+  };
+
+  return text[agent];
+}
+
+function buildAgentEvents(messages: AgentMessage[]): AgentEvent[] {
+  return messages.flatMap((message) => [
+    {
+      type: "thinking" as const,
+      agent: message.from,
+      target: message.to,
+      content: getThinkingText(message.from),
+      createdAt: message.createdAt
+    },
+    {
+      type: "tool" as const,
+      agent: message.from,
+      target: message.to,
+      content: `Calling ${getToolName(message.from)}...`,
+      createdAt: message.createdAt
+    },
+    {
+      type: "handoff" as const,
+      agent: message.from,
+      target: message.to,
+      content:
+        message.to === "all"
+          ? "Broadcasting update to all agents."
+          : `Handing context to ${getAgentLabel(message.to).name}.`,
+      createdAt: message.createdAt
+    },
+    {
+      type: "message" as const,
+      agent: message.from,
+      target: message.to,
+      content: message.content,
+      createdAt: message.createdAt
+    }
+  ]);
+}
+
+function getEventIcon(type: AgentEventType) {
+  switch (type) {
+    case "thinking":
+      return <Sparkles size={15} />;
+    case "tool":
+      return <Wrench size={15} />;
+    case "handoff":
+      return <Send size={15} />;
+    case "message":
+      return <MessageSquareText size={15} />;
+  }
+}
 
 /**
  * Interactive upload and review workbench for autonomous proposal generation.
@@ -25,9 +200,28 @@ export function ProposalWorkbench() {
   const [files, setFiles] = useState<File[]>([]);
   const [result, setResult] = useState<ApiResult | null>(null);
   const [error, setError] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [executionState, setExecutionState] = useState<ExecutionState>("idle");
   const [visibleMessages, setVisibleMessages] = useState(0);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+
+  const isGenerating =
+    executionState === "processing" || executionState === "replaying";
+
   const resultItems = result ? [result] : [];
+  const activeResult = resultItems[0];
+  const conversation =
+    activeResult?.proposal.agentConversation.length
+      ? activeResult.proposal.agentConversation
+      : fallbackMessages;
+  const agentEvents = useMemo(
+    () => buildAgentEvents(conversation),
+    [conversation]
+  );
+  const visibleEvents = agentEvents.slice(0, visibleMessages);
+  const progress =
+    agentEvents.length > 0
+      ? Math.min(100, Math.round((visibleMessages / agentEvents.length) * 100))
+      : 0;
 
   const markdownUrls = useMemo(() => {
     return resultItems.map((item) => ({
@@ -39,7 +233,12 @@ export function ProposalWorkbench() {
   const pdfUrls = useMemo(() => {
     return resultItems.map((item) => ({
       fileName: item.fileName,
-      url: URL.createObjectURL(new Blob([Uint8Array.from(atob(item.pdfBase64), (char) => char.charCodeAt(0))], { type: "application/pdf" }))
+      url: URL.createObjectURL(
+        new Blob(
+          [Uint8Array.from(atob(item.pdfBase64), (char) => char.charCodeAt(0))],
+          { type: "application/pdf" }
+        )
+      )
     }));
   }, [resultItems]);
 
@@ -48,65 +247,69 @@ export function ProposalWorkbench() {
    */
   async function generateProposal() {
     if (files.length === 0) return;
-    setIsGenerating(true);
+
+    setExecutionState("processing");
+    setVisibleMessages(0);
     setError("");
     setResult(null);
 
     const body = new FormData();
     files.forEach((file) => body.append("file", file));
 
-    const response = await fetch("/api/proposals", { method: "POST", body });
-    const data = await response.json();
+    try {
+      const response = await fetch("/api/proposals", { method: "POST", body });
+      const data = await response.json();
 
-    if (!response.ok) {
-      setError(data.error ?? "Proposal generation failed.");
-      setIsGenerating(false);
-      return;
+      if (!response.ok) {
+        setError(data.error ?? "Proposal generation failed.");
+        setExecutionState("idle");
+        return;
+      }
+
+      setResult(data);
+      setExecutionState("replaying");
+    } catch {
+      setError("Proposal generation failed. Please try again.");
+      setExecutionState("idle");
     }
-
-    setResult(data);
-    setIsGenerating(false);
   }
 
   useEffect(() => {
+    if (executionState !== "replaying") return;
 
-  if (!result) return;
+    setVisibleMessages(0);
+    let count = 0;
 
-  setVisibleMessages(0);
-
-  const messages =
-    result.proposal.agentConversation;
-
-  let count = 0;
-
-  const timer =
-    setInterval(() => {
-
-      count++;
-
+    const timer = window.setInterval(() => {
+      count += 1;
       setVisibleMessages(count);
 
-      if (
-        count >= messages.length
-      ) {
-        clearInterval(timer);
+      if (count >= agentEvents.length) {
+        window.clearInterval(timer);
+        window.setTimeout(() => setExecutionState("complete"), 650);
       }
+    }, 430);
 
-    }, 600);
+    return () => window.clearInterval(timer);
+  }, [agentEvents.length, executionState]);
 
-  return () =>
-    clearInterval(timer);
-
-}, [result]);
+  useEffect(() => {
+    timelineRef.current?.scrollTo({
+      top: timelineRef.current.scrollHeight,
+      behavior: "smooth"
+    });
+  }, [visibleMessages]);
 
   return (
     <main className="app-shell">
       <header className="topbar">
         <div className="brand">
           <h1>Autonomous RFP Proposal Generator</h1>
-          <p>CEO-led multi-agent proposal planning, validation, and export.</p>
+          <p>Upload an RFP, watch the specialist agents collaborate, and export the final proposal.</p>
         </div>
-        <span className="badge"><ShieldCheck size={14} /> Cross-agent validation enabled</span>
+        <span className="badge">
+          <ShieldCheck size={14} /> Cross-agent validation enabled
+        </span>
       </header>
 
       <section className="workspace">
@@ -114,7 +317,11 @@ export function ProposalWorkbench() {
           <h2>Upload RFP</h2>
           <label className="upload-zone">
             <Upload size={34} color="#126a72" />
-            <span>{files.length > 0 ? `${files.length} file(s) selected` : "Choose one or more PDF, DOCX, or TXT files"}</span>
+            <span>
+              {files.length > 0
+                ? `${files.length} file(s) selected`
+                : "Choose one or more PDF, DOCX, or TXT files"}
+            </span>
             <input
               className="file-input"
               type="file"
@@ -128,253 +335,223 @@ export function ProposalWorkbench() {
             {isGenerating ? "Generating" : "Generate Proposal"}
           </button>
           <p className={error ? "status error" : "status"}>
-            {error || "After upload, the CEO agent delegates work, specialists review each other, and the final proposal is exported."}
+            {error || "The existing multi-agent pipeline remains unchanged; this screen visualizes its execution for the demo."}
           </p>
         </aside>
 
         <section className="stack">
-          {!result && (
-            <div className="panel">
-              <h2>Proposal Output</h2>
-              <p className="status">Upload an RFP to generate scope, FTEs, effort, timeline, cost, architecture, risks, ROI, Markdown, and PDF.</p>
+          {executionState === "idle" && !result && (
+            <div className="panel output-empty">
+              <h2>Generate Proposal</h2>
+              <p className="status">
+                The proposal preview and download links will appear after the live agent execution finishes.
+              </p>
             </div>
           )}
 
-          {result && (
-            <>
-              {resultItems.map((item, index) => (
-                <div key={item.fileName} className="panel stack">
-                  <h2>{item.rfp.projectName}</h2>
-                  <div className="metrics">
-                    <div className="metric"><span>Confidence</span><strong>{item.proposal.confidenceScore}%</strong></div>
-                    <div className="metric"><span>Total Budget</span><strong>{usd(item.proposal.costEstimate.totalBudget)}</strong></div>
-                    <div className="metric"><span>Timeline</span><strong>{item.proposal.timeline.durationWeeks} weeks</strong></div>
-                    <div className="metric"><span>Efficiency Gain</span><strong>{item.proposal.roi.efficiencyGainPercent}%</strong></div>
-                  </div>
+          {(executionState === "processing" || executionState === "replaying") && (
+            <section className="panel execution-panel">
+              <div className="section-heading">
+                <div>
+                  <h2>Live Agent Execution</h2>
+                  <p>Replay of the CEO-led multi-agent workflow.</p>
+                </div>
+                <span className="execution-pill">
+                  {executionState === "processing" ? (
+                    <>
+                      <Loader2 size={14} className="spin" /> Processing RFP
+                    </>
+                  ) : (
+                    <>
+                      <Clock3 size={14} /> {progress}% complete
+                    </>
+                  )}
+                </span>
+              </div>
 
-                  {/* Add Agent Status Panel - Directly below metrics */}
-                  <div className="panel">
-                    <h3>Agent Status</h3>
-                    <ul className="list">
-                      {item.proposal.agentOutputs.map((output) => (
-                        <li key={output.agent}>
-                          {output.title}
-                          {" - "}
-                          {Math.round(output.confidence * 100)}% confidence
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+              <div className="progress-track" aria-label="Agent execution progress">
+                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              </div>
 
-                  {/* Add Executive Recommendation Panel - Below metrics */}
-                  <div className="panel">
-                    <h3>Bid Recommendation</h3>
-                    <p>{item.proposal.bidRecommendation}</p>
-                  </div>
-
-                  <div className="panel stack">
-                    <h2>Business Proposal Preview</h2>
-
-                    <div className="panel">
-                      <h3>Executive Summary</h3>
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.executiveSummary}
-                      </p>
+              <div className="agent-timeline" ref={timelineRef}>
+                {executionState === "processing" && (
+                  <div className="timeline-message active">
+                    <div className="message-meta">
+                      <span className="event-icon thinking-icon">
+                        <Cpu size={15} />
+                      </span>
+                      <strong>Orchestrator</strong>
+                      <span className="role-badge">Preparing</span>
+                      <span>now</span>
                     </div>
-
-                    <div className="panel">
-                      <h3>Client Understanding</h3>
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.clientUnderstanding}
-                      </p>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Proposed Solution</h3>
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.proposedSolution}
-                      </p>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Architecture Overview</h3>
-                      <p>
-                        {item.proposal.technicalArchitecture.architectureOverview}
-                      </p>
-
-                      <ul className="list">
-                        {item.proposal.technicalArchitecture.techStack.map(
-                          (tech) => (
-                            <li key={tech}>{tech}</li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Implementation Methodology</h3>
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.implementationMethodology}
-                      </p>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Budget Summary</h3>
-
-                      <ul className="list">
-                        <li>
-                          Development:
-                          {" "}
-                          {usd(
-                            item.proposal.costEstimate.developmentCost
-                          )}
-                        </li>
-
-                        <li>
-                          Infrastructure:
-                          {" "}
-                          {usd(
-                            item.proposal.costEstimate.infrastructureCost
-                          )}
-                        </li>
-
-                        <li>
-                          Contingency:
-                          {" "}
-                          {usd(
-                            item.proposal.costEstimate.contingencyCost
-                          )}
-                        </li>
-
-                        <li>
-                          Total:
-                          {" "}
-                          {usd(
-                            item.proposal.costEstimate.totalBudget
-                          )}
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Risk Assessment</h3>
-
-                      <ul className="list">
-                        {item.proposal.riskAssessment.deliveryRisks.map(
-                          (risk) => (
-                            <li key={risk}>{risk}</li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-
-                    <div className="panel">
-                      <h3>Conclusion</h3>
-
-                      <p style={{ whiteSpace: "pre-wrap" }}>
-                        {item.proposal.conclusion}
-                      </p>
+                    <p>Extracting the uploaded RFP, calling Gemini analysis, and preparing agent handoffs...</p>
+                    <div className="typing-indicator">
+                      <span />
+                      <span />
+                      <span />
                     </div>
                   </div>
+                )}
 
-                  <div className="panel">
-                    <h2>Executive Proposal Document</h2>
+                {visibleEvents.map((event, index) => {
+                  const agent = getAgentLabel(event.agent);
+                  const isActive =
+                    executionState === "replaying" && index === visibleEvents.length - 1;
 
-                    <pre
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        fontFamily: "inherit",
-                        lineHeight: 1.8,
-                        padding: 16
-                      }}
+                  return (
+                    <article
+                      className={isActive ? `timeline-message event-${event.type} active` : `timeline-message event-${event.type}`}
+                      key={`${event.agent}-${event.target}-${event.type}-${index}`}
                     >
-                      {item.proposal.finalProposal}
-                    </pre>
-                  </div>
-
-                  <div className="button-row">
-                    <a className="button secondary" href={markdownUrls[index]?.url} download={`${item.fileName}-proposal.md`}><Download size={16} /> Markdown</a>
-                    <a className="button secondary" href={pdfUrls[index]?.url} download={`${item.fileName}-proposal.pdf`}><Download size={16} /> PDF</a>
-                  </div>
-
-                  <div className="grid-two">
-                    <div className="panel">
-                      <h3>Resource Plan</h3>
-                      <ul className="list">
-                        {item.proposal.resourcePlan.teamComposition.map((row) => (
-                          <li key={row.role}>{row.role}: {row.fte} FTE for {row.months} months</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="panel">
-                      <h3>Communication Log</h3>
-                      <ul className="list">
-                        {item.proposal.agentConversation.slice(0, visibleMessages).map((message, messageIndex) => (
-                          <li key={`${message.from}-${message.to}-${messageIndex}`}>
-                            <strong>{message.from}</strong>
-                            {" → "}
-                            {message.to}
-                            <br />
-                            {message.content}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-
-                  {/* Add Compliance Matrix */}
-                  <div className="panel">
-                    <h3>Compliance Matrix</h3>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Requirement</th>
-                          <th>Status</th>
-                          <th>Owner</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {item.proposal.complianceMatrix.map((row, index) => (
-                          <tr key={index}>
-                            <td>{row.requirement}</td>
-                            <td>{row.status}</td>
-                            <td>{row.owner}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Real Agent Chat Panel - Add this block above Validation */}
-                  <div className="panel">
-                    <h2><h2>Live Multi-Agent Execution Feed</h2></h2>
-                    <div className="stack">
-                      {item.proposal.agentConversation.map((message, idx) => (
-                        <div key={`${message.from}-${idx}`} className="panel">
-                          <div>
-                            <strong>{message.from.toUpperCase()}</strong>
-                            {" → "}
-                            {message.to}
-                          </div>
-                          <div style={{ marginTop: 8 }}>
-                            {message.content}
-                          </div>
+                      <div className="message-meta">
+                        <span className={`event-icon ${event.type}-icon`}>
+                          {getEventIcon(event.type)}
+                        </span>
+                        <strong>{agent.name}</strong>
+                        <span className="role-badge">{agent.role}</span>
+                        <span className="event-type">{event.type}</span>
+                        <span>{formatTime(event.createdAt)}</span>
+                      </div>
+                      <p>{event.content}</p>
+                      {isActive && event.type !== "message" && (
+                        <div className="typing-indicator">
+                          <span />
+                          <span />
+                          <span />
                         </div>
-                      ))}
+                      )}
+                    </article>
+                  );
+                })}
+
+                {executionState === "replaying" && visibleMessages < agentEvents.length && (
+                  <div className="timeline-message thinking">
+                    <div className="message-meta">
+                      <span className="event-icon thinking-icon">
+                        <Sparkles size={15} />
+                      </span>
+                      <strong>Next Agent</strong>
+                      <span className="role-badge">Thinking</span>
                     </div>
+                    <div className="typing-indicator">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {executionState === "complete" && activeResult && (
+            <section className="stack">
+              <div className="panel execution-complete">
+                <CheckCircle2 size={18} />
+                <span>Agent execution complete. Proposal preview is ready.</span>
+              </div>
+
+              <article className="panel proposal-preview">
+                <div className="section-heading">
+                  <div>
+                    <h2>{activeResult.rfp.projectName}</h2>
+                    <p>Business Proposal Preview</p>
                   </div>
                 </div>
-              ))}
 
-              <div className="panel">
-                <h3>Validation</h3>
-                <ul className="list">
-                  {resultItems.flatMap((item) => item.proposal.consistencyChecks.map((check) => (
-                    <li key={`${item.fileName}-${check.category}-${check.message}`}>{check.severity.toUpperCase()}: {check.message}</li>
-                  )))}
-                </ul>
+                <section className="preview-section">
+                  <h3>Executive Summary</h3>
+                  <p>{activeResult.proposal.executiveSummary}</p>
+                </section>
+
+                <section className="preview-section">
+                  <h3>Client Understanding</h3>
+                  <p>{activeResult.proposal.clientUnderstanding}</p>
+                </section>
+
+                <section className="preview-section">
+                  <h3>Proposed Solution</h3>
+                  <p>{activeResult.proposal.proposedSolution}</p>
+                </section>
+
+                <section className="preview-section">
+                  <h3>Technical Architecture</h3>
+                  <p>{activeResult.proposal.technicalArchitecture.architectureOverview}</p>
+                  <ul className="list compact-list">
+                    {activeResult.proposal.technicalArchitecture.techStack.map((tech) => (
+                      <li key={tech}>{tech}</li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section className="preview-section">
+                  <h3>Resource Plan</h3>
+                  <ul className="list compact-list">
+                    {activeResult.proposal.resourcePlan.teamComposition.map((row) => (
+                      <li key={row.role}>
+                        {row.role}: {row.fte} FTE for {row.months} months
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section className="preview-section">
+                  <h3>Project Timeline</h3>
+                  <p>{activeResult.proposal.timeline.durationWeeks} weeks total delivery duration.</p>
+                  <ul className="list compact-list">
+                    {activeResult.proposal.timeline.phases.map((phase) => (
+                      <li key={phase.name}>
+                        {phase.name}: {phase.weeks} weeks, {phase.output}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section className="preview-section">
+                  <h3>Cost Breakdown</h3>
+                  <ul className="list compact-list">
+                    <li>Development: {usd(activeResult.proposal.costEstimate.developmentCost)}</li>
+                    <li>Infrastructure: {usd(activeResult.proposal.costEstimate.infrastructureCost)}</li>
+                    <li>Licensing: {usd(activeResult.proposal.costEstimate.licensingCost)}</li>
+                    <li>Contingency: {usd(activeResult.proposal.costEstimate.contingencyCost)}</li>
+                    <li>Support: {usd(activeResult.proposal.costEstimate.supportCost)}</li>
+                    <li>Total: {usd(activeResult.proposal.costEstimate.totalBudget)}</li>
+                  </ul>
+                </section>
+
+                <section className="preview-section">
+                  <h3>Risk Assessment</h3>
+                  <p>{activeResult.proposal.riskAssessment.riskSummary}</p>
+                  <ul className="list compact-list">
+                    {activeResult.proposal.riskAssessment.deliveryRisks.map((risk) => (
+                      <li key={risk}>{risk}</li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section className="preview-section">
+                  <h3>Conclusion</h3>
+                  <p>{activeResult.proposal.conclusion}</p>
+                </section>
+              </article>
+
+              <div className="button-row download-row">
+                <a
+                  className="button secondary"
+                  href={markdownUrls[0]?.url}
+                  download={`${activeResult.fileName}-proposal.md`}
+                >
+                  <Download size={16} /> Markdown
+                </a>
+                <a
+                  className="button"
+                  href={pdfUrls[0]?.url}
+                  download={`${activeResult.fileName}-proposal.pdf`}
+                >
+                  <Download size={16} /> PDF
+                </a>
               </div>
-            </>
+            </section>
           )}
         </section>
       </section>

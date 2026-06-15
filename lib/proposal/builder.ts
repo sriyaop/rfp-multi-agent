@@ -10,6 +10,10 @@ import {
   WorkflowState
 } from "@/lib/types";
 
+import {
+  getProjectSignals,
+  pickRelevantItems
+} from "@/lib/agents/rfp-intelligence";
 import { calculateRoi } from "@/lib/proposal/roi";
 import {
   calculateConfidence,
@@ -46,6 +50,9 @@ export function buildProposal(
     state.outputs.risk
       ?.findings as RiskPlan;
 
+  const signals =
+    getProjectSignals(state.rfp);
+
   const confidenceScore =
     calculateConfidence(state);
 
@@ -67,16 +74,13 @@ export function buildProposal(
 graph TD
 
 Client
- --> Frontend
+ --> Experience
 
-Frontend
- --> API
-
-API
+Experience
  --> Services
 
 Services
- --> Database
+ --> Data
 
 Services
  --> Integrations
@@ -85,21 +89,35 @@ Services
  --> Monitoring
 `;
 
+  const objectiveBullets =
+    pickRelevantItems(
+      state.rfp.businessObjectives,
+      [state.rfp.executiveSummary],
+      8
+    );
+
+  const solutionBullets =
+    pickRelevantItems(
+      product.features,
+      state.rfp.scopeItems,
+      10
+    );
+
   const executiveSummary =
     `
-This proposal outlines our recommended approach for delivering ${state.rfp.projectName} for ${state.rfp.clientName}.
+This proposal outlines our recommended approach for delivering ${state.rfp.projectName} for ${state.rfp.clientName}. Gemini-derived RFP analysis identified a ${signals.complexity.toLowerCase()} complexity ${signals.domain} initiative with ${signals.requirementCount} scoped requirement signals.
 
-The proposed solution aligns with the client's business objectives, technical requirements, timeline expectations and evaluation criteria while minimizing implementation risk.
+The proposed solution aligns the client's objectives, technical requirements, timeline expectations and evaluation criteria with a delivery model sized specifically for the extracted scope.
 `;
 
   const clientUnderstanding =
     `
-The client seeks a solution capable of meeting stated functional and technical requirements while maintaining scalability, security, maintainability and operational efficiency.
+The client seeks a solution capable of meeting the following AI-extracted business priorities while maintaining scalability, security, maintainability and operational efficiency.
 
 Key objectives include:
 
-${state.rfp.businessObjectives
-  .map((item) => `• ${item}`)
+${objectiveBullets
+  .map((item) => `- ${item}`)
   .join("\n")}
 `;
 
@@ -107,24 +125,23 @@ ${state.rfp.businessObjectives
     `
 Our proposed solution combines:
 
-${product.features
-  .slice(0, 10)
-  .map((item) => `• ${item}`)
+${solutionBullets
+  .map((item) => `- ${item}`)
   .join("\n")}
 
-supported by an enterprise-grade architecture, structured delivery methodology and dedicated implementation team.
+This is supported by a ${signals.domain}-specific architecture, a ${resource.totalFte} FTE delivery team, and a ${timeline.durationWeeks}-week roadmap calibrated to the RFP's complexity.
 `;
 
   const implementationMethodology =
     `
-The project will be executed using an agile delivery framework.
+The project will be executed using a delivery framework tailored to the RFP scope rather than a generic implementation plan.
 
 Phases include:
 
 ${timeline.phases
   .map(
     phase =>
-      `• ${phase.name} (${phase.weeks} weeks)`
+      `- ${phase.name} (${phase.weeks} weeks): ${phase.output}`
   )
   .join("\n")}
 `;
@@ -135,15 +152,11 @@ GO
 
 Reasoning:
 
-• Strong solution fit
-
-• Manageable delivery risks
-
-• Realistic staffing model
-
-• Budget aligns with scope
-
-• Architecture supports long-term scalability
+- Strong solution fit for a ${signals.complexity.toLowerCase()} complexity ${signals.domain} initiative
+- Delivery risks identified from the RFP and reflected in mitigations
+- Staffing model sized at ${resource.totalFte} FTE / ${resource.effortPersonMonths} person-months
+- Budget aligns with AI-derived scope, integration and compliance signals
+- Architecture supports the extracted technical and operational requirements
 `;
 
   const assumptions = [
@@ -152,7 +165,7 @@ Reasoning:
 
   const conclusion =
     `
-This proposal presents a realistic and scalable delivery approach capable of meeting the client's requirements while balancing cost, timeline and implementation risk.
+This proposal presents a realistic and scalable delivery approach for ${state.rfp.projectName}, with scope, architecture, staffing, budget, timeline and risk controls derived from the uploaded RFP analysis.
 `;
 
   const finalProposal = `
