@@ -22,8 +22,18 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+}
+
+select,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
 }
 
 .app-shell {
@@ -314,6 +324,102 @@ input {
   color: var(--muted);
 }
 
+.chat-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.agent-chat {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  min-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.chat-message {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 10px;
+  animation: eventIn 220ms ease both;
+}
+
+.chat-message.user-message {
+  background: #f0fbfc;
+  border-color: #99d6dd;
+}
+
+.chat-message.system-message {
+  background: #f8f9fc;
+}
+
+.chat-message.error-message {
+  background: #fffbfa;
+  border-color: #fecdca;
+}
+
+.chat-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid #99d6dd;
+  background: #f0fbfc;
+  color: var(--primary);
+}
+
+.chat-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chat-meta strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.chat-controls {
+  display: grid;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.chat-controls select {
+  min-height: 42px;
+  padding: 0 10px;
+}
+
+.chat-controls textarea {
+  min-height: 42px;
+  max-height: 120px;
+  resize: vertical;
+  padding: 10px 12px;
+  line-height: 1.35;
+}
+
+.chat-controls textarea:disabled,
+.chat-controls select:disabled {
+  background: #f2f4f7;
+  color: var(--muted);
+}
+
 .message-meta {
   display: flex;
   align-items: center;
@@ -497,6 +603,10 @@ input {
 
   .section-heading {
     display: grid;
+  }
+
+  .chat-controls {
+    grid-template-columns: 1fr;
   }
 }
 

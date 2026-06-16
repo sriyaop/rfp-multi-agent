@@ -135,7 +135,8 @@ export async function POST(request: Request) {
     );
 
     const pdf = await renderPdf(
-      proposal
+      proposal,
+      rfp
     );
 
     return NextResponse.json({

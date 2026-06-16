@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bot,
   CheckCircle2,
   Calculator,
   Clock3,
@@ -14,6 +15,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  UserRound,
   Wrench,
   Upload
 } from "lucide-react";
@@ -39,6 +41,15 @@ type ApiResult = ApiResultItem;
 type ExecutionState = "idle" | "processing" | "replaying" | "complete";
 type AgentEventType = "ai" | "code" | "calculation" | "thinking" | "tool" | "handoff" | "message";
 type EventActor = AgentRole | "system" | "gemini" | "api" | "builder" | "pdf";
+type ChatMessageStatus = "ready" | "thinking" | "error";
+
+interface ChatMessage {
+  id: string;
+  from: AgentRole | "user" | "system";
+  content: string;
+  createdAt: string;
+  status: ChatMessageStatus;
+}
 
 interface AgentEvent {
   type: AgentEventType;
@@ -57,6 +68,8 @@ const agentLabels: Record<AgentRole, { name: string; role: string }> = {
   timeline: { name: "Timeline Agent", role: "Roadmap" },
   risk: { name: "Risk Analysis Agent", role: "Risk" }
 };
+
+const chatAgents = Object.keys(agentLabels) as AgentRole[];
 
 const fallbackMessages: AgentMessage[] = [
   {
@@ -367,7 +380,11 @@ export function ProposalWorkbench() {
   const [error, setError] = useState("");
   const [executionState, setExecutionState] = useState<ExecutionState>("idle");
   const [visibleMessages, setVisibleMessages] = useState(0);
+  const [selectedAgent, setSelectedAgent] = useState<AgentRole>("ceo");
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  const chatRef = useRef<HTMLDivElement | null>(null);
 
   const isGenerating =
     executionState === "processing" || executionState === "replaying";
@@ -383,6 +400,11 @@ export function ProposalWorkbench() {
     agentEvents.length > 0
       ? Math.min(100, Math.round((visibleMessages / agentEvents.length) * 100))
       : 0;
+  const canAskAgents =
+    Boolean(activeResult) &&
+    (executionState === "replaying" || executionState === "complete");
+  const isAgentThinking =
+    chatMessages.some((message) => message.status === "thinking");
 
   const markdownUrls = useMemo(() => {
     return resultItems.map((item) => ({
@@ -413,6 +435,7 @@ export function ProposalWorkbench() {
     setVisibleMessages(0);
     setError("");
     setResult(null);
+    setChatMessages([]);
 
     const body = new FormData();
     files.forEach((file) => body.append("file", file));
@@ -433,10 +456,98 @@ export function ProposalWorkbench() {
       }
 
       setResult(data);
+      setChatMessages([
+        {
+          id: crypto.randomUUID(),
+          from: "system",
+          content:
+            "Agent chat is ready. Ask any specialist why it made a decision, what evidence it used, or what trade-offs it considered.",
+          createdAt: new Date().toISOString(),
+          status: "ready"
+        }
+      ]);
       setExecutionState("replaying");
     } catch {
       setError("Proposal generation failed. Please try again.");
       setExecutionState("idle");
+    }
+  }
+
+  async function askAgent() {
+    if (!activeResult || !chatInput.trim() || isAgentThinking) return;
+
+    const question = chatInput.trim();
+    const requestedAgent = selectedAgent;
+    const pendingId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    setChatInput("");
+    setChatMessages((messages) => [
+      ...messages,
+      {
+        id: crypto.randomUUID(),
+        from: "user",
+        content: question,
+        createdAt: now,
+        status: "ready"
+      },
+      {
+        id: pendingId,
+        from: requestedAgent,
+        content: `${getAgentLabel(requestedAgent).name} is reviewing the generated proposal context...`,
+        createdAt: now,
+        status: "thinking"
+      }
+    ]);
+
+    try {
+      const response = await fetch("/api/agent-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          agent: requestedAgent,
+          question,
+          rfp: activeResult.rfp,
+          proposal: activeResult.proposal
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Agent chat failed.");
+      }
+
+      setChatMessages((messages) =>
+        messages.map((message) =>
+          message.id === pendingId
+            ? {
+                ...message,
+                content: data.answer ?? "I could not produce an answer from the available context.",
+                createdAt: new Date().toISOString(),
+                status: "ready"
+              }
+            : message
+        )
+      );
+    } catch (error) {
+      setChatMessages((messages) =>
+        messages.map((message) =>
+          message.id === pendingId
+            ? {
+                ...message,
+                content:
+                  error instanceof Error
+                    ? error.message
+                    : "Agent chat failed. Please try again.",
+                createdAt: new Date().toISOString(),
+                status: "error"
+              }
+            : message
+        )
+      );
     }
   }
 
@@ -465,6 +576,13 @@ export function ProposalWorkbench() {
       behavior: "smooth"
     });
   }, [visibleMessages]);
+
+  useEffect(() => {
+    chatRef.current?.scrollTo({
+      top: chatRef.current.scrollHeight,
+      behavior: "smooth"
+    });
+  }, [chatMessages]);
 
   return (
     <main className="app-shell">
@@ -606,6 +724,115 @@ export function ProposalWorkbench() {
                     </div>
                   </div>
                 )}
+              </div>
+            </section>
+          )}
+
+          {executionState !== "idle" && (
+            <section className="panel chat-panel">
+              <div className="section-heading">
+                <div>
+                  <h2>Ask The Agents</h2>
+                  <p>Question specialist decisions after the proposal context is available.</p>
+                </div>
+                <span className="execution-pill">
+                  <MessageSquareText size={14} />
+                  {canAskAgents ? "Live Q&A" : "Waiting"}
+                </span>
+              </div>
+
+              <div className="agent-chat" ref={chatRef}>
+                {chatMessages.length === 0 && (
+                  <div className="chat-message system-message">
+                    <div className="chat-avatar">
+                      <Bot size={15} />
+                    </div>
+                    <div>
+                      <div className="chat-meta">
+                        <strong>Agent Chat</strong>
+                        <span>Preparing</span>
+                      </div>
+                      <p>
+                        The agents are extracting and analyzing the RFP. Once the replay starts, you can ask why they chose the scope, architecture, budget, timeline, or risks.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {chatMessages.map((message) => {
+                  const label =
+                    message.from === "user"
+                      ? { name: "You", role: "Question" }
+                      : message.from === "system"
+                        ? { name: "Agent Chat", role: "Guide" }
+                        : getAgentLabel(message.from);
+
+                  return (
+                    <article
+                      className={`chat-message ${message.from === "user" ? "user-message" : ""} ${message.status === "error" ? "error-message" : ""}`}
+                      key={message.id}
+                    >
+                      <div className="chat-avatar">
+                        {message.from === "user" ? <UserRound size={15} /> : <Bot size={15} />}
+                      </div>
+                      <div>
+                        <div className="chat-meta">
+                          <strong>{label.name}</strong>
+                          <span>{label.role}</span>
+                          <span>{formatTime(message.createdAt)}</span>
+                        </div>
+                        <p>{message.content}</p>
+                        {message.status === "thinking" && (
+                          <div className="typing-indicator">
+                            <span />
+                            <span />
+                            <span />
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="chat-controls">
+                <select
+                  aria-label="Choose an agent to answer"
+                  value={selectedAgent}
+                  onChange={(event) => setSelectedAgent(event.target.value as AgentRole)}
+                  disabled={!canAskAgents || isAgentThinking}
+                >
+                  {chatAgents.map((agent) => (
+                    <option key={agent} value={agent}>
+                      {getAgentLabel(agent).name}
+                    </option>
+                  ))}
+                </select>
+                <textarea
+                  aria-label="Ask an agent a question"
+                  value={chatInput}
+                  placeholder={
+                    canAskAgents
+                      ? "Ask why this agent made a decision..."
+                      : "Agent Q&A will unlock after analysis finishes."
+                  }
+                  disabled={!canAskAgents || isAgentThinking}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void askAgent();
+                    }
+                  }}
+                />
+                <button
+                  className="button"
+                  disabled={!canAskAgents || !chatInput.trim() || isAgentThinking}
+                  onClick={() => void askAgent()}
+                >
+                  {isAgentThinking ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                  Ask
+                </button>
               </div>
             </section>
           )}
