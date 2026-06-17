@@ -37,6 +37,15 @@ interface ApiResultItem {
   };
 }
 
+interface AgentChatResponse {
+  mode?: "answer" | "cross_check" | "proposal_updated";
+  answer?: string;
+  changesApplied?: string[];
+  proposal?: Proposal;
+  markdown?: string;
+  pdfBase64?: string;
+}
+
 type ApiResult = ApiResultItem;
 type ExecutionState = "idle" | "processing" | "replaying" | "complete";
 type AgentEventType = "ai" | "code" | "calculation" | "thinking" | "tool" | "handoff" | "message";
@@ -461,7 +470,7 @@ export function ProposalWorkbench() {
           id: crypto.randomUUID(),
           from: "system",
           content:
-            "Agent chat is ready. Ask any specialist why it made a decision, what evidence it used, or what trade-offs it considered.",
+            "Agent chat is ready. Ask specialists to explain decisions, cross-check each other's outputs, or revise the proposal with your instructions.",
           createdAt: new Date().toISOString(),
           status: "ready"
         }
@@ -514,18 +523,40 @@ export function ProposalWorkbench() {
         })
       });
 
-      const data = await response.json();
+      const data = await response.json() as AgentChatResponse & { error?: string };
 
       if (!response.ok) {
         throw new Error(data.error ?? "Agent chat failed.");
       }
+
+      if (
+        data.proposal &&
+        data.markdown &&
+        data.pdfBase64
+      ) {
+        setResult((current) =>
+          current
+            ? {
+                ...current,
+                proposal: data.proposal as Proposal,
+                markdown: data.markdown as string,
+                pdfBase64: data.pdfBase64 as string
+              }
+            : current
+        );
+      }
+
+      const appliedSuffix =
+        data.changesApplied?.length
+          ? `\n\nApplied changes:\n${data.changesApplied.map((item) => `- ${item}`).join("\n")}`
+          : "";
 
       setChatMessages((messages) =>
         messages.map((message) =>
           message.id === pendingId
             ? {
                 ...message,
-                content: data.answer ?? "I could not produce an answer from the available context.",
+                content: `${data.answer ?? "I could not produce an answer from the available context."}${appliedSuffix}`,
                 createdAt: new Date().toISOString(),
                 status: "ready"
               }
@@ -733,11 +764,11 @@ export function ProposalWorkbench() {
               <div className="section-heading">
                 <div>
                   <h2>Ask The Agents</h2>
-                  <p>Question specialist decisions after the proposal context is available.</p>
+                  <p>Question decisions, request cross-checks, or apply proposal revisions.</p>
                 </div>
                 <span className="execution-pill">
                   <MessageSquareText size={14} />
-                  {canAskAgents ? "Live Q&A" : "Waiting"}
+                  {canAskAgents ? "Live editing" : "Waiting"}
                 </span>
               </div>
 
@@ -753,7 +784,7 @@ export function ProposalWorkbench() {
                         <span>Preparing</span>
                       </div>
                       <p>
-                        The agents are extracting and analyzing the RFP. Once the replay starts, you can ask why they chose the scope, architecture, budget, timeline, or risks.
+                        The agents are extracting and analyzing the RFP. Once the replay starts, you can ask why they chose the scope, request a cross-check, or tell an agent to revise the proposal.
                       </p>
                     </div>
                   </div>
@@ -813,7 +844,7 @@ export function ProposalWorkbench() {
                   value={chatInput}
                   placeholder={
                     canAskAgents
-                      ? "Ask why this agent made a decision..."
+                      ? "Ask a question, request a cross-check, or tell this agent what to change..."
                       : "Agent Q&A will unlock after analysis finishes."
                   }
                   disabled={!canAskAgents || isAgentThinking}
