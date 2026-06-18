@@ -9,6 +9,16 @@ export interface ProjectSignals {
   domain: "erp" | "website" | "mobile" | "data" | "general";
   integrationCount: number;
   complianceCount: number;
+  dataMigrationCount: number;
+  reportingCount: number;
+  securityCount: number;
+  trainingCount: number;
+  supportCount: number;
+  paymentCount: number;
+  workflowCount: number;
+  userExperienceCount: number;
+  currency: string;
+  market: "india" | "us" | "uk" | "europe" | "canada" | "australia" | "global";
   suggestedTeamSize: number;
   suggestedTimelineWeeks: number;
 }
@@ -56,13 +66,83 @@ export function getProjectSignals(rfp: RfpAnalysis): ProjectSignals {
     "soc",
     "hipaa"
   ]);
+  const dataMigrationCount = countMatches(text, [
+    "migration",
+    "data conversion",
+    "data import",
+    "legacy data",
+    "etl",
+    "data migration"
+  ]);
+  const reportingCount = countMatches(text, [
+    "reporting",
+    "dashboard",
+    "analytics",
+    "business intelligence",
+    "bi",
+    "reports"
+  ]);
+  const securityCount = countMatches(text, [
+    "security",
+    "sso",
+    "authentication",
+    "authorization",
+    "audit",
+    "privacy",
+    "encryption",
+    "access control"
+  ]);
+  const trainingCount = countMatches(text, [
+    "training",
+    "knowledge transfer",
+    "documentation",
+    "user enablement",
+    "change management"
+  ]);
+  const supportCount = countMatches(text, [
+    "support",
+    "maintenance",
+    "sla",
+    "warranty",
+    "post go-live",
+    "managed services"
+  ]);
+  const paymentCount = countMatches(text, [
+    "payment",
+    "billing",
+    "invoice",
+    "fee",
+    "procurement",
+    "purchase order"
+  ]);
+  const workflowCount = countMatches(text, [
+    "workflow",
+    "approval",
+    "routing",
+    "case management",
+    "process"
+  ]);
+  const userExperienceCount = countMatches(text, [
+    "ux",
+    "ui",
+    "accessibility",
+    "responsive",
+    "content",
+    "mobile friendly"
+  ]);
 
   const domain = inferDomain(text);
+  const market = inferMarket(text);
+  const currency = inferCurrency(text, market);
   const explicitWeeks = extractWeeks(rfp.timelineInformation.join(" "));
   const complexityScore =
     requirementCount +
     integrationCount * 3 +
     complianceCount * 2 +
+    dataMigrationCount * 3 +
+    reportingCount * 2 +
+    securityCount * 2 +
+    workflowCount * 2 +
     (domain === "erp" ? 12 : 0) +
     (domain === "data" ? 6 : 0);
 
@@ -82,6 +162,16 @@ export function getProjectSignals(rfp: RfpAnalysis): ProjectSignals {
     domain,
     integrationCount,
     complianceCount,
+    dataMigrationCount,
+    reportingCount,
+    securityCount,
+    trainingCount,
+    supportCount,
+    paymentCount,
+    workflowCount,
+    userExperienceCount,
+    currency,
+    market,
     suggestedTeamSize,
     suggestedTimelineWeeks
   };
@@ -113,7 +203,11 @@ function inferDomain(text: string): ProjectSignals["domain"] {
 }
 
 function countMatches(text: string, terms: string[]): number {
-  return terms.reduce((count, term) => count + (text.includes(term) ? 1 : 0), 0);
+  return terms.reduce((count, term) => {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matches = text.match(new RegExp(`\\b${escaped}\\b`, "gi"));
+    return count + (matches?.length ?? 0);
+  }, 0);
 }
 
 function extractWeeks(text: string): number | undefined {
@@ -130,4 +224,41 @@ function extractWeeks(text: string): number | undefined {
   }
 
   return undefined;
+}
+
+function inferMarket(text: string): ProjectSignals["market"] {
+  if (/india|indian|inr|rupees?|₹|mumbai|delhi|bengaluru|bangalore|chennai|hyderabad|pune/.test(text)) {
+    return "india";
+  }
+
+  if (/united states|usa|u\.s\.|usd|\$|california|new york|texas|florida|washington|oregon/.test(text)) {
+    return "us";
+  }
+
+  if (/united kingdom|uk|gbp|pounds?|£|london|england|scotland|wales/.test(text)) {
+    return "uk";
+  }
+
+  if (/european union|europe|eur|€|germany|france|ireland|netherlands|spain/.test(text)) {
+    return "europe";
+  }
+
+  if (/canada|cad|toronto|ontario|vancouver|british columbia/.test(text)) {
+    return "canada";
+  }
+
+  if (/australia|aud|sydney|melbourne|queensland/.test(text)) {
+    return "australia";
+  }
+
+  return "global";
+}
+
+function inferCurrency(text: string, market: ProjectSignals["market"]): string {
+  if (/₹|inr|rupees?/.test(text) || market === "india") return "INR";
+  if (/£|gbp|pounds?/.test(text) || market === "uk") return "GBP";
+  if (/€|eur|euro/.test(text) || market === "europe") return "EUR";
+  if (/cad|canadian dollars?/.test(text) || market === "canada") return "CAD";
+  if (/aud|australian dollars?/.test(text) || market === "australia") return "AUD";
+  return "USD";
 }

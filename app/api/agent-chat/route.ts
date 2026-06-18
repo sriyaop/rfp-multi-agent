@@ -4,6 +4,11 @@ import { GeminiClient } from "@/lib/ai/gemini";
 import { renderMarkdown } from "@/lib/proposal/markdown";
 import { renderPdf } from "@/lib/proposal/pdf";
 import {
+  assertProposalQuality,
+  sanitizeProposalForClient
+} from "@/lib/proposal/quality";
+import { money } from "@/lib/utils";
+import {
   AgentRole,
   ConsistencyCheck,
   Proposal,
@@ -78,7 +83,6 @@ export async function POST(request: Request) {
           body.agent,
           updatedProposal
         ),
-        proposal: updatedProposal,
         ...artifacts
       });
     }
@@ -101,7 +105,6 @@ export async function POST(request: Request) {
         mode: "proposal_updated",
         answer: updated.answer,
         changesApplied: updated.changesApplied,
-        proposal: updated.proposal,
         ...artifacts
       });
     }
@@ -284,7 +287,7 @@ function crossCheckProposal(
     proposal.costEstimate.developmentCost /
     Math.max(1, proposal.resourcePlan.effortPersonMonths);
 
-  if (costPerPersonMonth < 8000) {
+  if (costPerPersonMonth < minimumMonthlyRate(proposal.costEstimate.currency)) {
     checks.push({
       severity: "critical",
       category: "Budget",
@@ -310,7 +313,7 @@ function crossCheckProposal(
     checks.push({
       severity: "warning",
       category: "Risk",
-      message: "Risk mitigations are fewer than the risk signals extracted from the RFP."
+    message: "Risk mitigations should be expanded to cover the risk areas described in the RFP."
     });
   }
 
@@ -344,19 +347,28 @@ function buildCrossCheckAnswer(
     .map((check) => `${check.severity.toUpperCase()} ${check.category}: ${check.message}`)
     .join(" ");
 
-  return `${agentNames[agent]} completed a cross-agent consistency check and updated the proposal's validation notes. ${summary}`;
+  return `${agentNames[agent]} completed a cross-agent consistency check and updated the proposal's validation notes. ${sanitizeProposalForClient({
+    ...proposal,
+    executiveSummary: summary
+  }).executiveSummary}`;
 }
 
 async function renderArtifacts(
   proposal: Proposal,
   rfp: RfpAnalysis
 ) {
-  const markdown = renderMarkdown(proposal);
-  const pdf = await renderPdf(proposal, rfp);
+  const clientProposal =
+    sanitizeProposalForClient(proposal);
+
+  assertProposalQuality(clientProposal);
+
+  const markdown = renderMarkdown(clientProposal);
+  const pdf = await renderPdf(clientProposal, rfp);
 
   return {
     markdown,
-    pdfBase64: pdf.toString("base64")
+    pdfBase64: pdf.toString("base64"),
+    proposal: clientProposal
   };
 }
 
@@ -560,7 +572,7 @@ ${proposal.timeline.durationWeeks} Weeks
 
 BUDGET
 
-$${proposal.costEstimate.totalBudget.toLocaleString()}
+${money(proposal.costEstimate.totalBudget, proposal.costEstimate.currency)}
 
 CONCLUSION
 
@@ -592,6 +604,19 @@ function recommendationForCheck(check: ConsistencyCheck): string {
   }
 
   return "Review the affected proposal section and update scope, assumptions, cost, timeline, or mitigation language before submission.";
+}
+
+function minimumMonthlyRate(currency: string): number {
+  const thresholds: Record<string, number> = {
+    INR: 180000,
+    GBP: 6000,
+    EUR: 7000,
+    CAD: 10000,
+    AUD: 11000,
+    USD: 8000
+  };
+
+  return thresholds[currency] ?? thresholds.USD;
 }
 
 function buildAgentContext(
@@ -686,7 +711,7 @@ function getFallbackDecisionSummary(
     case "resourcePlanning":
       return `I estimated ${proposal.resourcePlan.totalFte} FTE, ${proposal.resourcePlan.effortPersonMonths} person-months, and ${proposal.resourcePlan.estimatedHours.toLocaleString()} delivery hours.`;
     case "costEstimation":
-      return `I calculated a total budget of $${proposal.costEstimate.totalBudget.toLocaleString()} from development, infrastructure, licensing, support, and contingency costs.`;
+      return `I calculated a total budget of ${money(proposal.costEstimate.totalBudget, proposal.costEstimate.currency)} from development, infrastructure, licensing, support, and contingency costs.`;
     case "timeline":
       return `I proposed a ${proposal.timeline.durationWeeks}-week delivery plan ending ${proposal.timeline.estimatedCompletionDate}.`;
     case "risk":

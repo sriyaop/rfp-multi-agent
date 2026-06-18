@@ -10,14 +10,34 @@ export function toUniqueItems(items: string[], fallback: string[] = []): string[
 }
 
 /**
- * Formats a number as a USD currency string for proposal-ready output.
+ * Formats a number as proposal-ready currency.
  */
-export function usd(value: number): string {
-  return new Intl.NumberFormat("en-US", {
+export function money(value: number, currency = "USD"): string {
+  const locale =
+    currency === "INR"
+      ? "en-IN"
+      : currency === "GBP"
+      ? "en-GB"
+      : currency === "EUR"
+      ? "en-IE"
+      : currency === "CAD"
+      ? "en-CA"
+      : currency === "AUD"
+      ? "en-AU"
+      : "en-US";
+
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 0
   }).format(value);
+}
+
+/**
+ * Backward-compatible USD formatter for older proposal text paths.
+ */
+export function usd(value: number): string {
+  return money(value, "USD");
 }
 
 /**

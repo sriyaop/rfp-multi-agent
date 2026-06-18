@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bot,
+  BarChart3,
   CheckCircle2,
   Calculator,
+  ChevronDown,
   Clock3,
   Code2,
   Cpu,
   Download,
   FileText,
+  GitCompare,
+  Info,
+  ListChecks,
   Loader2,
   MessageSquareText,
+  Route,
   Send,
   ShieldCheck,
   Sparkles,
@@ -20,7 +26,7 @@ import {
   Upload
 } from "lucide-react";
 import { Proposal, RfpAnalysis, AgentMessage, AgentRole } from "@/lib/types";
-import { usd } from "@/lib/utils";
+import { money } from "@/lib/utils";
 
 interface ApiResultItem {
   rfp: RfpAnalysis;
@@ -51,6 +57,17 @@ type ExecutionState = "idle" | "processing" | "replaying" | "complete";
 type AgentEventType = "ai" | "code" | "calculation" | "thinking" | "tool" | "handoff" | "message";
 type EventActor = AgentRole | "system" | "gemini" | "api" | "builder" | "pdf";
 type ChatMessageStatus = "ready" | "thinking" | "error";
+type ProposalSectionId =
+  | "executiveSummary"
+  | "clientUnderstanding"
+  | "proposedSolution"
+  | "technicalArchitecture"
+  | "resourcePlan"
+  | "timeline"
+  | "budget"
+  | "riskAssessment"
+  | "recommendations"
+  | "conclusion";
 
 interface ChatMessage {
   id: string;
@@ -58,6 +75,8 @@ interface ChatMessage {
   content: string;
   createdAt: string;
   status: ChatMessageStatus;
+  routedAgent?: AgentRole;
+  mode?: AgentChatResponse["mode"];
 }
 
 interface AgentEvent {
@@ -78,7 +97,18 @@ const agentLabels: Record<AgentRole, { name: string; role: string }> = {
   risk: { name: "Risk Analysis Agent", role: "Risk" }
 };
 
-const chatAgents = Object.keys(agentLabels) as AgentRole[];
+const proposalSections: Array<{ id: ProposalSectionId; title: string; description: string }> = [
+  { id: "executiveSummary", title: "Executive Summary", description: "High-level recommendation and project context." },
+  { id: "clientUnderstanding", title: "Client Understanding", description: "Business priorities extracted from the RFP." },
+  { id: "proposedSolution", title: "Proposed Solution", description: "Recommended capabilities and delivery approach." },
+  { id: "technicalArchitecture", title: "Technical Architecture", description: "Architecture, stack, security, and integrations." },
+  { id: "resourcePlan", title: "Resource Plan", description: "Team allocation, effort, and staffing coverage." },
+  { id: "timeline", title: "Timeline", description: "Phase roadmap and delivery milestones." },
+  { id: "budget", title: "Budget", description: "Cost breakdown and commercial assumptions." },
+  { id: "riskAssessment", title: "Risk Assessment", description: "Risk categories, mitigations, and controls." },
+  { id: "recommendations", title: "Recommendations", description: "Bid recommendation, validation, and ROI." },
+  { id: "conclusion", title: "Conclusion", description: "Closing summary for the generated proposal." }
+];
 
 const fallbackMessages: AgentMessage[] = [
   {
@@ -265,7 +295,7 @@ function buildExecutionEvents(result: ApiResult | null): AgentEvent[] {
       type: "ai",
       agent: "gemini",
       target: "all",
-      content: `${result.extraction?.analysisSource === "gemini-file" ? "Text extraction was weak, so the system called analyzeRfpFileWithAI() and asked Gemini to read the PDF directly." : "Calling analyzeRfpWithAI() in lib/document/rfp-analyser.ts."} AI extracted ${rfp.functionalRequirements.length} functional requirements, ${rfp.technicalRequirements.length} technical requirements, ${rfp.scopeItems.length} scope items and ${rfp.risks.length} risk signals.`,
+      content: `${result.extraction?.analysisSource === "gemini-file" ? "Text extraction was weak, so the system used document understanding to read the PDF directly." : "Reading the RFP text and structuring proposal inputs."} The system identified functional requirements, technical requirements, scope items and risk areas for agent review.`,
       createdAt: now
     },
     {
@@ -279,7 +309,7 @@ function buildExecutionEvents(result: ApiResult | null): AgentEvent[] {
       type: "handoff",
       agent: "api",
       target: "ceo",
-      content: "Starting ProposalOrchestrator.run() in lib/agents/orchestrator.ts with AI-derived RFP analysis.",
+      content: "Starting the CEO-led proposal workflow with structured RFP context.",
       createdAt: now
     }
   ];
@@ -293,7 +323,7 @@ function buildExecutionEvents(result: ApiResult | null): AgentEvent[] {
       type: "calculation",
       agent: "productManager",
       target: "cto",
-      content: `Product Manager maps ${proposal.userStories.length} user stories and ${proposal.complianceMatrix.length} compliance rows from AI-extracted requirements.`,
+      content: `Product Manager maps ${proposal.userStories.length} user stories and ${proposal.complianceMatrix.length} compliance rows from the RFP requirements.`,
       createdAt: now
     },
     {
@@ -314,7 +344,7 @@ function buildExecutionEvents(result: ApiResult | null): AgentEvent[] {
       type: "calculation",
       agent: "costEstimation",
       target: "timeline",
-      content: `Cost Estimation computes development ${usd(proposal.costEstimate.developmentCost)}, infrastructure ${usd(proposal.costEstimate.infrastructureCost)}, licensing ${usd(proposal.costEstimate.licensingCost)}, contingency ${usd(proposal.costEstimate.contingencyCost)} and total ${usd(proposal.costEstimate.totalBudget)}.`,
+      content: `Cost Estimation computes development ${money(proposal.costEstimate.developmentCost, proposal.costEstimate.currency)}, infrastructure ${money(proposal.costEstimate.infrastructureCost, proposal.costEstimate.currency)}, licensing ${money(proposal.costEstimate.licensingCost, proposal.costEstimate.currency)}, contingency ${money(proposal.costEstimate.contingencyCost, proposal.costEstimate.currency)} and total ${money(proposal.costEstimate.totalBudget, proposal.costEstimate.currency)}.`,
       createdAt: now
     },
     {
@@ -380,6 +410,99 @@ function getEventIcon(type: AgentEventType) {
   }
 }
 
+function routeQuestionToAgent(question: string): AgentRole {
+  const normalized = question.toLowerCase();
+
+  if (/\b(cost|budget|price|pricing|cloud|infrastructure|license|reduce|cheaper|optimi[sz]e)\b/.test(normalized)) {
+    return "costEstimation";
+  }
+
+  if (/\b(timeline|schedule|deadline|phase|milestone|shorten|delay|weeks|completion)\b/.test(normalized)) {
+    return "timeline";
+  }
+
+  if (/\b(risk|mitigation|issue|compliance|security concern|probability|impact)\b/.test(normalized)) {
+    return "risk";
+  }
+
+  if (/\b(architecture|technical|stack|react|next|api|integration|database|security|hosting|cloud)\b/.test(normalized)) {
+    return "cto";
+  }
+
+  if (/\b(resource|staff|team|fte|capacity|allocation|developer|qa|manager)\b/.test(normalized)) {
+    return "resourcePlanning";
+  }
+
+  if (/\b(scope|feature|requirement|user story|deliverable|client need|solution)\b/.test(normalized)) {
+    return "productManager";
+  }
+
+  return "ceo";
+}
+
+function compareProposalSections(before: Proposal, after: Proposal): ProposalSectionId[] {
+  const changed: ProposalSectionId[] = [];
+  const checks: Array<[ProposalSectionId, unknown, unknown]> = [
+    ["executiveSummary", before.executiveSummary, after.executiveSummary],
+    ["clientUnderstanding", before.clientUnderstanding, after.clientUnderstanding],
+    ["proposedSolution", before.proposedSolution, after.proposedSolution],
+    ["technicalArchitecture", before.technicalArchitecture, after.technicalArchitecture],
+    ["resourcePlan", before.resourcePlan, after.resourcePlan],
+    ["timeline", before.timeline, after.timeline],
+    ["budget", before.costEstimate, after.costEstimate],
+    ["riskAssessment", before.riskAssessment, after.riskAssessment],
+    ["recommendations", [before.bidRecommendation, before.consistencyChecks, before.roi], [after.bidRecommendation, after.consistencyChecks, after.roi]],
+    ["conclusion", before.conclusion, after.conclusion]
+  ];
+
+  checks.forEach(([section, oldValue, newValue]) => {
+    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+      changed.push(section);
+    }
+  });
+
+  return changed;
+}
+
+function getBudgetChartData(proposal: Proposal) {
+  return [
+    { label: "Development", value: proposal.costEstimate.developmentCost, color: "#126a72", currency: proposal.costEstimate.currency },
+    { label: "Infrastructure", value: proposal.costEstimate.infrastructureCost, color: "#2f80ed", currency: proposal.costEstimate.currency },
+    { label: "Licensing", value: proposal.costEstimate.licensingCost, color: "#b7791f", currency: proposal.costEstimate.currency },
+    { label: "Support", value: proposal.costEstimate.supportCost, color: "#6f42c1", currency: proposal.costEstimate.currency },
+    { label: "Contingency", value: proposal.costEstimate.contingencyCost, color: "#b42318", currency: proposal.costEstimate.currency }
+  ].filter((item) => item.value > 0);
+}
+
+function getRiskChartData(proposal: Proposal) {
+  return [
+    { label: "Technical", value: proposal.riskAssessment.technicalRisks.length, color: "#2f80ed" },
+    { label: "Delivery", value: proposal.riskAssessment.deliveryRisks.length, color: "#b7791f" },
+    { label: "Budget", value: proposal.riskAssessment.budgetRisks.length, color: "#b42318" },
+    { label: "Compliance", value: proposal.riskAssessment.complianceRisks.length, color: "#6f42c1" }
+  ].filter((item) => item.value > 0);
+}
+
+function getEffortChartData(proposal: Proposal) {
+  return proposal.resourcePlan.teamComposition.map((item) => ({
+    label: item.role,
+    value: roundChartValue(item.fte * item.months),
+    color: "#126a72"
+  }));
+}
+
+function roundChartValue(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function markdownBlocks(content: string) {
+  return content
+    .replace(/\r/g, "")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+}
+
 /**
  * Interactive upload and review workbench for autonomous proposal generation.
  */
@@ -389,7 +512,9 @@ export function ProposalWorkbench() {
   const [error, setError] = useState("");
   const [executionState, setExecutionState] = useState<ExecutionState>("idle");
   const [visibleMessages, setVisibleMessages] = useState(0);
-  const [selectedAgent, setSelectedAgent] = useState<AgentRole>("ceo");
+  const [routedAgent, setRoutedAgent] = useState<AgentRole>("ceo");
+  const [highlightedSections, setHighlightedSections] = useState<ProposalSectionId[]>([]);
+  const [lastProposalUpdate, setLastProposalUpdate] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -445,6 +570,8 @@ export function ProposalWorkbench() {
     setError("");
     setResult(null);
     setChatMessages([]);
+    setHighlightedSections([]);
+    setLastProposalUpdate(null);
 
     const body = new FormData();
     files.forEach((file) => body.append("file", file));
@@ -486,11 +613,12 @@ export function ProposalWorkbench() {
     if (!activeResult || !chatInput.trim() || isAgentThinking) return;
 
     const question = chatInput.trim();
-    const requestedAgent = selectedAgent;
+    const requestedAgent = routeQuestionToAgent(question);
     const pendingId = crypto.randomUUID();
     const now = new Date().toISOString();
 
     setChatInput("");
+    setRoutedAgent(requestedAgent);
     setChatMessages((messages) => [
       ...messages,
       {
@@ -503,9 +631,10 @@ export function ProposalWorkbench() {
       {
         id: pendingId,
         from: requestedAgent,
-        content: `${getAgentLabel(requestedAgent).name} is reviewing the generated proposal context...`,
+        content: `${getAgentLabel(requestedAgent).name} is reviewing your request and the generated proposal context...`,
         createdAt: now,
-        status: "thinking"
+        status: "thinking",
+        routedAgent: requestedAgent
       }
     ]);
 
@@ -534,6 +663,14 @@ export function ProposalWorkbench() {
         data.markdown &&
         data.pdfBase64
       ) {
+        const changedSections = compareProposalSections(
+          activeResult.proposal,
+          data.proposal
+        );
+
+        setHighlightedSections(changedSections);
+        setLastProposalUpdate(new Date().toISOString());
+
         setResult((current) =>
           current
             ? {
@@ -558,7 +695,9 @@ export function ProposalWorkbench() {
                 ...message,
                 content: `${data.answer ?? "I could not produce an answer from the available context."}${appliedSuffix}`,
                 createdAt: new Date().toISOString(),
-                status: "ready"
+                status: "ready",
+                routedAgent: requestedAgent,
+                mode: data.mode ?? "answer"
               }
             : message
         )
@@ -628,8 +767,11 @@ export function ProposalWorkbench() {
       </header>
 
       <section className="workspace">
-        <aside className="panel stack">
+        <aside className="panel stack upload-panel">
           <h2>Upload RFP</h2>
+          <p className="panel-description">
+            Start here. Upload one RFP document and the system will extract requirements, run the agents, and produce a proposal.
+          </p>
           <label className="upload-zone">
             <Upload size={34} color="#126a72" />
             <span>
@@ -652,14 +794,44 @@ export function ProposalWorkbench() {
           <p className={error ? "status error" : "status"}>
             {error || "The existing multi-agent pipeline remains unchanged; this screen visualizes its execution for the demo."}
           </p>
+
+          <section className="onboarding-card">
+            <h3>Welcome</h3>
+            <p>This platform helps you:</p>
+            <ul className="check-list">
+              <li>Upload an RFP</li>
+              <li>Generate an AI-powered proposal</li>
+              <li>Observe multi-agent collaboration</li>
+              <li>Chat with proposal agents</li>
+              <li>Refine proposal sections</li>
+              <li>Export a professional PDF</li>
+            </ul>
+          </section>
+
+          <section className="workflow-guide" aria-label="Guided workflow">
+            {[
+              "Upload your RFP document",
+              "Watch AI agents analyze requirements",
+              "Review generated proposal",
+              "Chat and request changes",
+              "See changes reflected instantly",
+              "Export final proposal"
+            ].map((step, index) => (
+              <div className="workflow-step" key={step} title={step}>
+                <span>{index + 1}</span>
+                <p>{step}</p>
+              </div>
+            ))}
+          </section>
         </aside>
 
-        <section className="stack">
+        <section className="stack workspace-main">
           {executionState === "idle" && !result && (
             <div className="panel output-empty">
-              <h2>Generate Proposal</h2>
+              <Info size={22} color="#126a72" />
+              <h2>Ready When You Are</h2>
               <p className="status">
-                The proposal preview and download links will appear after the live agent execution finishes.
+                Upload an RFP from the left panel. The agent collaboration workspace, proposal reader, and download links will appear here after generation.
               </p>
             </div>
           )}
@@ -668,8 +840,8 @@ export function ProposalWorkbench() {
             <section className="panel execution-panel">
               <div className="section-heading">
                 <div>
-                  <h2>Live Agent Execution</h2>
-                  <p>Replay of the CEO-led multi-agent workflow.</p>
+                  <h2>Agent Collaboration Workspace</h2>
+                  <p>Conversation cards showing agent messages, reviews, critiques, approvals, and revisions.</p>
                 </div>
                 <span className="execution-pill">
                   {executionState === "processing" ? (
@@ -783,9 +955,7 @@ export function ProposalWorkbench() {
                         <strong>Agent Chat</strong>
                         <span>Preparing</span>
                       </div>
-                      <p>
-                        The agents are extracting and analyzing the RFP. Once the replay starts, you can ask why they chose the scope, request a cross-check, or tell an agent to revise the proposal.
-                      </p>
+                      <RichText content="The agents are extracting and analyzing the RFP. Once the replay starts, you can ask why they chose the scope, request a cross-check, or tell an agent to revise the proposal." />
                     </div>
                   </div>
                 )}
@@ -810,9 +980,20 @@ export function ProposalWorkbench() {
                         <div className="chat-meta">
                           <strong>{label.name}</strong>
                           <span>{label.role}</span>
+                          {message.routedAgent && (
+                            <span className="route-badge">
+                              <Route size={11} /> Auto-routed
+                            </span>
+                          )}
+                          {message.mode === "proposal_updated" && (
+                            <span className="change-badge">Proposal updated</span>
+                          )}
+                          {message.mode === "cross_check" && (
+                            <span className="change-badge">Cross-check complete</span>
+                          )}
                           <span>{formatTime(message.createdAt)}</span>
                         </div>
-                        <p>{message.content}</p>
+                        <RichText content={message.content} />
                         {message.status === "thinking" && (
                           <div className="typing-indicator">
                             <span />
@@ -827,18 +1008,10 @@ export function ProposalWorkbench() {
               </div>
 
               <div className="chat-controls">
-                <select
-                  aria-label="Choose an agent to answer"
-                  value={selectedAgent}
-                  onChange={(event) => setSelectedAgent(event.target.value as AgentRole)}
-                  disabled={!canAskAgents || isAgentThinking}
-                >
-                  {chatAgents.map((agent) => (
-                    <option key={agent} value={agent}>
-                      {getAgentLabel(agent).name}
-                    </option>
-                  ))}
-                </select>
+                <div className="agent-route-preview" title="The system automatically chooses the best specialist agent from your message.">
+                  <Route size={16} />
+                  <span>{getAgentLabel(routedAgent).name}</span>
+                </div>
                 <textarea
                   aria-label="Ask an agent a question"
                   value={chatInput}
@@ -872,105 +1045,18 @@ export function ProposalWorkbench() {
             <section className="stack">
               <div className="panel execution-complete">
                 <CheckCircle2 size={18} />
-                <span>Agent execution complete. Proposal preview is ready.</span>
+                <span>
+                  Agent execution complete. Proposal reader is ready.
+                  {lastProposalUpdate && ` Last updated ${formatTime(lastProposalUpdate)}.`}
+                </span>
               </div>
 
-              <article className="panel proposal-preview">
-                <div className="section-heading">
-                  <div>
-                    <h2>{activeResult.rfp.projectName}</h2>
-                    <p>Business Proposal Preview</p>
-                  </div>
-                </div>
-
-                <section className="preview-section">
-                  <h3>Executive Summary</h3>
-                  <p>{activeResult.proposal.executiveSummary}</p>
-                </section>
-
-                <section className="preview-section">
-                  <h3>Client Understanding</h3>
-                  <p>{activeResult.proposal.clientUnderstanding}</p>
-                </section>
-
-                <section className="preview-section">
-                  <h3>Proposed Solution</h3>
-                  <p>{activeResult.proposal.proposedSolution}</p>
-                </section>
-
-                <section className="preview-section">
-                  <h3>Technical Architecture</h3>
-                  <p>{activeResult.proposal.technicalArchitecture.architectureOverview}</p>
-                  <ul className="list compact-list">
-                    {activeResult.proposal.technicalArchitecture.techStack.map((tech) => (
-                      <li key={tech}>{tech}</li>
-                    ))}
-                  </ul>
-                </section>
-
-                <section className="preview-section">
-                  <h3>Resource Plan</h3>
-                  <ul className="list compact-list">
-                    {activeResult.proposal.resourcePlan.teamComposition.map((row) => (
-                      <li key={row.role}>
-                        {row.role}: {row.fte} FTE for {row.months} months
-                      </li>
-                    ))}
-                    <li>Estimated effort: {activeResult.proposal.resourcePlan.effortPersonMonths} person-months</li>
-                    <li>Estimated hours: {activeResult.proposal.resourcePlan.estimatedHours.toLocaleString()} hours</li>
-                  </ul>
-                </section>
-
-                <section className="preview-section">
-                  <h3>Project Timeline</h3>
-                  <p>{activeResult.proposal.timeline.durationWeeks} weeks total delivery duration.</p>
-                  <ul className="list compact-list">
-                    {activeResult.proposal.timeline.phases.map((phase) => (
-                      <li key={phase.name}>
-                        {phase.name}: {phase.weeks} weeks, {phase.output}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-
-                <section className="preview-section">
-                  <h3>Cost Breakdown</h3>
-                  <ul className="list compact-list">
-                    <li>Development: {usd(activeResult.proposal.costEstimate.developmentCost)}</li>
-                    <li>Infrastructure: {usd(activeResult.proposal.costEstimate.infrastructureCost)}</li>
-                    <li>Licensing: {usd(activeResult.proposal.costEstimate.licensingCost)}</li>
-                    <li>Contingency: {usd(activeResult.proposal.costEstimate.contingencyCost)}</li>
-                    <li>Support: {usd(activeResult.proposal.costEstimate.supportCost)}</li>
-                    <li>Total: {usd(activeResult.proposal.costEstimate.totalBudget)}</li>
-                  </ul>
-                </section>
-
-                <section className="preview-section">
-                  <h3>Risk Assessment</h3>
-                  <p>{activeResult.proposal.riskAssessment.riskSummary}</p>
-                  <ul className="list compact-list">
-                    {activeResult.proposal.riskAssessment.deliveryRisks.map((risk) => (
-                      <li key={risk}>{risk}</li>
-                    ))}
-                  </ul>
-                </section>
-
-                <section className="preview-section">
-                  <h3>ROI & POC Comparison</h3>
-                  <p>{activeResult.proposal.roi.summary}</p>
-                  <ul className="list compact-list">
-                    <li>Manual effort baseline: {activeResult.proposal.roi.manualEffortHours} hours</li>
-                    <li>Automated effort: {activeResult.proposal.roi.automatedEffortHours} hours</li>
-                    <li>Time saved: {activeResult.proposal.roi.timeSavedHours} hours</li>
-                    <li>Efficiency gain: {activeResult.proposal.roi.efficiencyGainPercent}%</li>
-                  </ul>
-                </section>
-
-                <section className="preview-section">
-                  <h3>Conclusion</h3>
-                  <p>{activeResult.proposal.conclusion}</p>
-                </section>
-              </article>
+              <ProposalReader
+                proposal={activeResult.proposal}
+                rfp={activeResult.rfp}
+                highlightedSections={highlightedSections}
+                lastUpdated={lastProposalUpdate}
+              />
 
               <div className="button-row download-row">
                 <a
@@ -994,4 +1080,437 @@ export function ProposalWorkbench() {
       </section>
     </main>
   );
+}
+
+function RichText({ content }: { content: string }) {
+  return (
+    <div className="rich-text">
+      {markdownBlocks(content).map((block, index) => {
+        if (/^\|.+\|$/.test(block.split("\n")[0] ?? "")) {
+          const rows = block
+            .split("\n")
+            .filter((line) => /^\|.+\|$/.test(line))
+            .filter((line) => !/^\|[\s:-]+\|?$/.test(line.replace(/\|/g, "|")));
+
+          return (
+            <table className="chat-table" key={`table-${index}`}>
+              <tbody>
+                {rows.map((row, rowIndex) => (
+                  <tr key={`${row}-${rowIndex}`}>
+                    {row
+                      .split("|")
+                      .map((cell) => cell.trim())
+                      .filter(Boolean)
+                      .map((cell, cellIndex) =>
+                        rowIndex === 0 ? (
+                          <th key={`${cell}-${cellIndex}`}>{cell}</th>
+                        ) : (
+                          <td key={`${cell}-${cellIndex}`}>{cell}</td>
+                        )
+                      )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        }
+
+        if (/^#{1,4}\s/.test(block)) {
+          return <h4 key={block}>{block.replace(/^#{1,4}\s/, "")}</h4>;
+        }
+
+        if (/^(\d+\.|-|\*)\s/m.test(block)) {
+          const items = block
+            .split("\n")
+            .map((item) => item.replace(/^(\d+\.|-|\*)\s*/, "").trim())
+            .filter(Boolean);
+
+          return (
+            <ul key={`list-${index}`}>
+              {items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          );
+        }
+
+        return <p key={block}>{block}</p>;
+      })}
+    </div>
+  );
+}
+
+function ProposalReader({
+  proposal,
+  rfp,
+  highlightedSections,
+  lastUpdated
+}: {
+  proposal: Proposal;
+  rfp: RfpAnalysis;
+  highlightedSections: ProposalSectionId[];
+  lastUpdated: string | null;
+}) {
+  const completion = Math.round(
+    (proposalSections.filter((section) => hasSectionContent(section.id, proposal)).length /
+      proposalSections.length) *
+      100
+  );
+
+  return (
+    <article className="proposal-reader panel">
+      <aside className="proposal-toc" aria-label="Proposal table of contents">
+        <div className="toc-heading">
+          <ListChecks size={16} />
+          <span>Contents</span>
+        </div>
+        <div className="reader-progress">
+          <span style={{ width: `${completion}%` }} />
+        </div>
+        <p>{completion}% proposal coverage</p>
+        <nav>
+          {proposalSections.map((section) => (
+            <a
+              className={highlightedSections.includes(section.id) ? "toc-link updated" : "toc-link"}
+              href={`#${section.id}`}
+              key={section.id}
+            >
+              {section.title}
+            </a>
+          ))}
+        </nav>
+      </aside>
+
+      <div className="proposal-document">
+        <header className="reader-title">
+          <div>
+            <p className="eyebrow">Business Proposal Preview</p>
+            <h2>{rfp.projectName}</h2>
+            <p>Prepared for {rfp.clientName}</p>
+          </div>
+          {lastUpdated && (
+            <span className="change-badge">
+              <GitCompare size={13} /> Updated {formatTime(lastUpdated)}
+            </span>
+          )}
+        </header>
+
+        <PreviewSection
+          id="executiveSummary"
+          title="Executive Summary"
+          description="High-level recommendation and proposal context."
+          updated={highlightedSections.includes("executiveSummary")}
+        >
+          <RichText content={proposal.executiveSummary} />
+        </PreviewSection>
+
+        <PreviewSection
+          id="clientUnderstanding"
+          title="Client Understanding"
+          description="The business needs and objectives detected from the RFP."
+          updated={highlightedSections.includes("clientUnderstanding")}
+        >
+          <RichText content={proposal.clientUnderstanding} />
+        </PreviewSection>
+
+        <PreviewSection
+          id="proposedSolution"
+          title="Proposed Solution"
+          description="Recommended capabilities and how they map to the RFP."
+          updated={highlightedSections.includes("proposedSolution")}
+        >
+          <RichText content={proposal.proposedSolution} />
+        </PreviewSection>
+
+        <PreviewSection
+          id="technicalArchitecture"
+          title="Technical Architecture"
+          description="Architecture, stack, security, integrations, and operating model."
+          updated={highlightedSections.includes("technicalArchitecture")}
+        >
+          <RichText content={proposal.technicalArchitecture.architectureOverview} />
+          <div className="tag-grid">
+            {proposal.technicalArchitecture.techStack.map((tech) => (
+              <span key={tech}>{tech}</span>
+            ))}
+          </div>
+        </PreviewSection>
+
+        <PreviewSection
+          id="resourcePlan"
+          title="Resource Plan"
+          description="Team allocation and estimated effort."
+          updated={highlightedSections.includes("resourcePlan")}
+        >
+          <MetricGrid
+            items={[
+              ["Total FTE", String(proposal.resourcePlan.totalFte)],
+              ["Person-months", String(proposal.resourcePlan.effortPersonMonths)],
+              ["Estimated hours", proposal.resourcePlan.estimatedHours.toLocaleString()]
+            ]}
+          />
+          <BarList
+            title="Effort Distribution"
+            data={getEffortChartData(proposal)}
+            valueFormatter={(value) => `${value} PM`}
+          />
+          <div className="recommendation-box">
+            <strong>Staffing Rationale</strong>
+            <ul className="list compact-list">
+              {proposal.resourcePlan.staffingStrategy.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </PreviewSection>
+
+        <PreviewSection
+          id="timeline"
+          title="Timeline"
+          description="Phase roadmap and estimated completion."
+          updated={highlightedSections.includes("timeline")}
+        >
+          <MetricGrid
+            items={[
+              ["Duration", `${proposal.timeline.durationWeeks} weeks`],
+              ["Completion", proposal.timeline.estimatedCompletionDate]
+            ]}
+          />
+          <TimelineRoadmap proposal={proposal} />
+          <div className="recommendation-box">
+            <strong>Timeline Rationale</strong>
+            <ul className="list compact-list">
+              {proposal.timeline.rationale.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </PreviewSection>
+
+        <PreviewSection
+          id="budget"
+          title="Budget"
+          description="Cost breakdown based on role effort, market-rate assumptions, platform costs and delivery contingency."
+          updated={highlightedSections.includes("budget")}
+        >
+          <MetricGrid
+            items={[
+              ["Development", money(proposal.costEstimate.developmentCost, proposal.costEstimate.currency)],
+              ["Infrastructure", money(proposal.costEstimate.infrastructureCost, proposal.costEstimate.currency)],
+              ["Licensing", money(proposal.costEstimate.licensingCost, proposal.costEstimate.currency)],
+              ["Support", money(proposal.costEstimate.supportCost, proposal.costEstimate.currency)],
+              ["Contingency", money(proposal.costEstimate.contingencyCost, proposal.costEstimate.currency)],
+              ["Total", money(proposal.costEstimate.totalBudget, proposal.costEstimate.currency)]
+            ]}
+          />
+          <DonutChart data={getBudgetChartData(proposal)} total={proposal.costEstimate.totalBudget} />
+          <div className="recommendation-box">
+            <strong>Budget Assumptions</strong>
+            <ul className="list compact-list">
+              {proposal.costEstimate.pricingAssumptions.slice(0, 8).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </PreviewSection>
+
+        <PreviewSection
+          id="riskAssessment"
+          title="Risk Assessment"
+          description="Risk categories, operational impact areas and mitigations."
+          updated={highlightedSections.includes("riskAssessment")}
+        >
+          <RichText content={proposal.riskAssessment.riskSummary} />
+          <BarList
+            title="Risk Exposure Matrix"
+            data={getRiskChartData(proposal)}
+            valueFormatter={(value) => `${value} risks`}
+          />
+        </PreviewSection>
+
+        <PreviewSection
+          id="recommendations"
+          title="Recommendations"
+          description="Bid recommendation, validation and POC/ROI summary."
+          updated={highlightedSections.includes("recommendations")}
+        >
+          <RichText content={proposal.bidRecommendation} />
+          <div className="recommendation-box">
+            <strong>ROI / POC Comparison</strong>
+            <p>{proposal.roi.summary}</p>
+          </div>
+          <ul className="list compact-list">
+            {proposal.consistencyChecks.map((check) => (
+              <li key={`${check.category}-${check.message}`}>
+                {check.severity.toUpperCase()} / {check.category}: {check.message}
+              </li>
+            ))}
+          </ul>
+        </PreviewSection>
+
+        <PreviewSection
+          id="conclusion"
+          title="Conclusion"
+          description="Closing summary."
+          updated={highlightedSections.includes("conclusion")}
+        >
+          <RichText content={proposal.conclusion} />
+        </PreviewSection>
+      </div>
+    </article>
+  );
+}
+
+function PreviewSection({
+  id,
+  title,
+  description,
+  updated,
+  children
+}: {
+  id: ProposalSectionId;
+  title: string;
+  description: string;
+  updated: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className={updated ? "preview-section updated" : "preview-section"} id={id} open>
+      <summary>
+        <span>
+          <ChevronDown size={16} />
+          <strong>{title}</strong>
+        </span>
+        {updated && <span className="change-badge">Section updated</span>}
+      </summary>
+      <p className="section-description">{description}</p>
+      <div className="section-body">{children}</div>
+    </details>
+  );
+}
+
+function MetricGrid({ items }: { items: Array<[string, string]> }) {
+  return (
+    <div className="metric-grid">
+      {items.map(([label, value]) => (
+        <div className="metric-card" key={label}>
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BarList({
+  title,
+  data,
+  valueFormatter
+}: {
+  title: string;
+  data: Array<{ label: string; value: number; color: string }>;
+  valueFormatter: (value: number) => string;
+}) {
+  const max = Math.max(1, ...data.map((item) => item.value));
+
+  return (
+    <div className="chart-card">
+      <div className="chart-title">
+        <BarChart3 size={16} />
+        <strong>{title}</strong>
+      </div>
+      <div className="bar-list">
+        {data.map((item) => (
+          <div className="bar-row" key={item.label}>
+            <span>{item.label}</span>
+            <div className="bar-track">
+              <span style={{ width: `${Math.max(6, (item.value / max) * 100)}%`, background: item.color }} />
+            </div>
+            <strong>{valueFormatter(item.value)}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DonutChart({
+  data,
+  total
+}: {
+  data: Array<{ label: string; value: number; color: string; currency?: string }>;
+  total: number;
+}) {
+  let offset = 0;
+  const gradient = data
+    .map((item) => {
+      const start = offset;
+      const end = offset + (item.value / Math.max(1, total)) * 100;
+      offset = end;
+      return `${item.color} ${start}% ${end}%`;
+    })
+    .join(", ");
+
+  return (
+    <div className="chart-card donut-layout">
+      <div className="donut" style={{ background: `conic-gradient(${gradient})` }}>
+        <span>{money(total, data[0]?.currency ?? "USD")}</span>
+      </div>
+      <div className="chart-legend">
+        {data.map((item) => (
+          <span key={item.label}>
+            <i style={{ background: item.color }} />
+            {item.label}: {money(item.value, item.currency ?? "USD")}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TimelineRoadmap({ proposal }: { proposal: Proposal }) {
+  const total = Math.max(1, proposal.timeline.phases.reduce((sum, phase) => sum + phase.weeks, 0));
+
+  return (
+    <div className="chart-card">
+      <div className="chart-title">
+        <Clock3 size={16} />
+        <strong>Phase Timeline</strong>
+      </div>
+      <div className="phase-roadmap">
+        {proposal.timeline.phases.map((phase) => (
+          <div className="phase-item" key={phase.name} style={{ flexGrow: phase.weeks / total }}>
+            <strong>{phase.name}</strong>
+            <span>{phase.weeks} weeks</span>
+            <p>{phase.output}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function hasSectionContent(section: ProposalSectionId, proposal: Proposal): boolean {
+  switch (section) {
+    case "executiveSummary":
+      return Boolean(proposal.executiveSummary.trim());
+    case "clientUnderstanding":
+      return Boolean(proposal.clientUnderstanding.trim());
+    case "proposedSolution":
+      return Boolean(proposal.proposedSolution.trim());
+    case "technicalArchitecture":
+      return Boolean(proposal.technicalArchitecture.architectureOverview.trim());
+    case "resourcePlan":
+      return proposal.resourcePlan.teamComposition.length > 0;
+    case "timeline":
+      return proposal.timeline.phases.length > 0;
+    case "budget":
+      return proposal.costEstimate.totalBudget > 0;
+    case "riskAssessment":
+      return Boolean(proposal.riskAssessment.riskSummary.trim());
+    case "recommendations":
+      return Boolean(proposal.bidRecommendation.trim());
+    case "conclusion":
+      return Boolean(proposal.conclusion.trim());
+  }
 }

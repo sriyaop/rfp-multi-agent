@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit/js/pdfkit.standalone";
 
 import { Proposal, RfpAnalysis } from "@/lib/types";
-import { usd } from "@/lib/utils";
+import { money } from "@/lib/utils";
 
 const COLORS = {
   ink: "#1f2937",
@@ -64,21 +64,124 @@ export async function renderPdf(
       doc.y = PAGE.top + 28;
     });
 
-    cover(doc, proposal, rfp);
-    doc.addPage();
-    executiveSnapshot(doc, proposal, rfp);
-    respondentProfile(doc, rfp);
-    requirementsResponse(doc, proposal, rfp);
-    deliveryPlan(doc, proposal);
-    technicalPlan(doc, proposal);
-    riskPlan(doc, proposal);
-    pricing(doc, proposal);
-    governanceAndContract(doc, proposal, rfp);
-    appendices(doc, proposal);
+    drawPageHeader(doc, rfp);
+    doc.y = PAGE.top + 28;
+    previewAlignedProposal(doc, proposal, rfp);
 
     addFooters(doc, rfp);
     doc.end();
   });
+}
+
+function previewAlignedProposal(doc: PdfDoc, proposal: Proposal, rfp?: RfpAnalysis) {
+  section(doc, "Executive Summary", "High-level recommendation and project context");
+  paragraph(doc, proposal.executiveSummary);
+
+  section(doc, "Client Understanding", "Business priorities extracted from the RFP");
+  paragraph(doc, proposal.clientUnderstanding);
+
+  section(doc, "Proposed Solution", "Recommended capabilities and delivery approach");
+  paragraph(doc, proposal.proposedSolution);
+
+  section(doc, "Technical Architecture", "Architecture, stack, security, and integrations");
+  paragraph(doc, proposal.technicalArchitecture.architectureOverview);
+  subheading(doc, "Technology Stack");
+  chips(doc, proposal.technicalArchitecture.techStack);
+  subheading(doc, "Security And Operations");
+  bullets(doc, [
+    ...proposal.technicalArchitecture.securityArchitecture.slice(0, 5),
+    ...proposal.technicalArchitecture.monitoringStrategy.slice(0, 4)
+  ]);
+
+  section(doc, "Resource Plan", "Team allocation, effort, and staffing coverage");
+  stats(doc, [
+    { label: "Total FTE", value: String(proposal.resourcePlan.totalFte), accent: COLORS.teal },
+    { label: "Person Months", value: String(proposal.resourcePlan.effortPersonMonths), accent: COLORS.gold },
+    { label: "Estimated Hours", value: proposal.resourcePlan.estimatedHours.toLocaleString(), accent: COLORS.navy }
+  ]);
+  barChart(
+    doc,
+    "Effort Distribution",
+    proposal.resourcePlan.teamComposition.map((item) => ({
+      label: item.role,
+      value: roundOne(item.fte * item.months),
+      displayValue: `${roundOne(item.fte * item.months)} PM`,
+      color: COLORS.teal
+    }))
+  );
+  subheading(doc, "Staffing Rationale");
+  bullets(doc, proposal.resourcePlan.staffingStrategy);
+  table(doc, [
+    { label: "Role", width: 250 },
+    { label: "FTE", width: 80 },
+    { label: "Months", width: 80 },
+    { label: "Coverage", width: 80 }
+  ], proposal.resourcePlan.teamComposition.map((item) => [
+    item.role,
+    String(item.fte),
+    String(item.months),
+    "Planned"
+  ]));
+
+  section(doc, "Timeline", "Phase roadmap and estimated completion");
+  stats(doc, [
+    { label: "Duration", value: `${proposal.timeline.durationWeeks} weeks`, accent: COLORS.teal },
+    { label: "Completion", value: proposal.timeline.estimatedCompletionDate, accent: COLORS.gold },
+    { label: "Phases", value: String(proposal.timeline.phases.length), accent: COLORS.navy }
+  ]);
+  timelineChart(doc, proposal);
+  subheading(doc, "Timeline Rationale");
+  bullets(doc, proposal.timeline.rationale);
+  table(doc, [
+    { label: "Phase", width: 170 },
+    { label: "Duration", width: 80 },
+    { label: "Output", width: 240 }
+  ], proposal.timeline.phases.map((phase) => [
+    phase.name,
+    `${phase.weeks} weeks`,
+    phase.output
+  ]));
+
+  section(doc, "Budget", "Cost breakdown and commercial assumptions");
+  stats(doc, [
+    { label: "Development", value: money(proposal.costEstimate.developmentCost, proposal.costEstimate.currency), accent: COLORS.teal },
+    { label: "Infrastructure", value: money(proposal.costEstimate.infrastructureCost, proposal.costEstimate.currency), accent: COLORS.gold },
+    { label: "Total", value: money(proposal.costEstimate.totalBudget, proposal.costEstimate.currency), accent: COLORS.navy }
+  ]);
+  budgetChart(doc, proposal);
+  subheading(doc, "Budget Assumptions");
+  bullets(doc, proposal.costEstimate.pricingAssumptions.slice(0, 8));
+  table(doc, [
+    { label: "Cost Item", width: 300 },
+    { label: "Amount", width: 190 }
+  ], [
+    ["Development cost", money(proposal.costEstimate.developmentCost, proposal.costEstimate.currency)],
+    ["Infrastructure cost", money(proposal.costEstimate.infrastructureCost, proposal.costEstimate.currency)],
+    ["Licensing cost", money(proposal.costEstimate.licensingCost, proposal.costEstimate.currency)],
+    ["Support cost", money(proposal.costEstimate.supportCost, proposal.costEstimate.currency)],
+    ["Contingency", money(proposal.costEstimate.contingencyCost, proposal.costEstimate.currency)],
+    ["Total budget", money(proposal.costEstimate.totalBudget, proposal.costEstimate.currency)]
+  ], { emphasizeLastRow: true });
+
+  section(doc, "Risk Assessment", "Risk categories, operational impact areas, and mitigations");
+  paragraph(doc, proposal.riskAssessment.riskSummary);
+  barChart(doc, "Risk Exposure Matrix", [
+    { label: "Technical", value: proposal.riskAssessment.technicalRisks.length, displayValue: `${proposal.riskAssessment.technicalRisks.length}`, color: COLORS.teal },
+    { label: "Delivery", value: proposal.riskAssessment.deliveryRisks.length, displayValue: `${proposal.riskAssessment.deliveryRisks.length}`, color: COLORS.gold },
+    { label: "Budget", value: proposal.riskAssessment.budgetRisks.length, displayValue: `${proposal.riskAssessment.budgetRisks.length}`, color: COLORS.navy },
+    { label: "Compliance", value: proposal.riskAssessment.complianceRisks.length, displayValue: `${proposal.riskAssessment.complianceRisks.length}`, color: "#6f42c1" }
+  ]);
+  subheading(doc, "Mitigations");
+  bullets(doc, proposal.riskAssessment.mitigations);
+
+  section(doc, "Recommendations", "Bid recommendation, validation, and ROI");
+  paragraph(doc, proposal.bidRecommendation);
+  callout(doc, "ROI / POC Comparison", proposal.roi.summary, COLORS.softGold);
+  subheading(doc, "Consistency Checks");
+  bullets(doc, proposal.consistencyChecks.map((check) => `${check.severity.toUpperCase()} / ${check.category}: ${check.message}`));
+
+  section(doc, "Conclusion", `Prepared for ${cleanText(rfp?.clientName, "the requesting organization")}`);
+  paragraph(doc, proposal.conclusion);
 }
 
 function cover(doc: PdfDoc, proposal: Proposal, rfp?: RfpAnalysis) {
@@ -129,7 +232,7 @@ function cover(doc: PdfDoc, proposal: Proposal, rfp?: RfpAnalysis) {
     },
     {
       label: "Budget",
-      value: usd(proposal.costEstimate.totalBudget),
+      value: money(proposal.costEstimate.totalBudget, proposal.costEstimate.currency),
       accent: COLORS.navy
     }
   ]);
@@ -207,7 +310,7 @@ function requirementsResponse(doc: PdfDoc, proposal: Proposal, rfp?: RfpAnalysis
 
   subheading(doc, "Innovation And Quality Controls");
   bullets(doc, [
-    "AI-assisted RFP analysis transforms unstructured RFP content into structured requirement, scope, timeline, budget, and risk signals.",
+    "Structured RFP review transforms proposal requirements into scope, timeline, budget, and risk inputs.",
     "Specialist agents validate solution, delivery, resource, cost, timeline, and risk alignment before final proposal assembly.",
     `Cross-agent validation recorded ${proposal.consistencyChecks.length} consistency checks with a ${proposal.confidenceScore}% confidence score.`,
     proposal.roi.summary
@@ -287,12 +390,12 @@ function pricing(doc: PdfDoc, proposal: Proposal) {
     { label: "Cost Item", width: 300 },
     { label: "Amount", width: 190 }
   ], [
-    ["Development cost", usd(proposal.costEstimate.developmentCost)],
-    ["Infrastructure cost", usd(proposal.costEstimate.infrastructureCost)],
-    ["Licensing cost", usd(proposal.costEstimate.licensingCost)],
-    ["Support cost", usd(proposal.costEstimate.supportCost)],
-    ["Contingency", usd(proposal.costEstimate.contingencyCost)],
-    ["Total budget", usd(proposal.costEstimate.totalBudget)]
+    ["Development cost", money(proposal.costEstimate.developmentCost, proposal.costEstimate.currency)],
+    ["Infrastructure cost", money(proposal.costEstimate.infrastructureCost, proposal.costEstimate.currency)],
+    ["Licensing cost", money(proposal.costEstimate.licensingCost, proposal.costEstimate.currency)],
+    ["Support cost", money(proposal.costEstimate.supportCost, proposal.costEstimate.currency)],
+    ["Contingency", money(proposal.costEstimate.contingencyCost, proposal.costEstimate.currency)],
+    ["Total budget", money(proposal.costEstimate.totalBudget, proposal.costEstimate.currency)]
   ], { emphasizeLastRow: true });
 
   subheading(doc, "Pricing Assumptions");
@@ -437,6 +540,177 @@ function bullets(doc: PdfDoc, items: string[]) {
     doc.moveDown(0.45);
   });
   doc.moveDown(0.3);
+}
+
+function chips(doc: PdfDoc, items: string[]) {
+  const cleanItems = items.map(normalize).filter(Boolean);
+  if (cleanItems.length === 0) {
+    return;
+  }
+
+  ensureSpace(doc, 58);
+  let x = PAGE.marginX;
+  let y = doc.y;
+  const maxX = PAGE.width - PAGE.marginX;
+
+  cleanItems.forEach((item) => {
+    const width = Math.min(170, Math.max(58, doc.widthOfString(item) + 22));
+    if (x + width > maxX) {
+      x = PAGE.marginX;
+      y += 28;
+    }
+
+    doc.roundedRect(x, y, width, 20, 10).fill(COLORS.softTeal);
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .fillColor(COLORS.teal)
+      .text(item, x + 10, y + 6, { width: width - 20 });
+    x += width + 8;
+  });
+
+  doc.y = y + 34;
+}
+
+function barChart(
+  doc: PdfDoc,
+  title: string,
+  data: Array<{
+    label: string;
+    value: number;
+    displayValue: string;
+    color: string;
+  }>
+) {
+  const rows = data.filter((item) => item.value > 0);
+  if (rows.length === 0) {
+    return;
+  }
+
+  const rowHeight = 22;
+  const height = 42 + rows.length * rowHeight;
+  ensureSpace(doc, height + 12);
+
+  const x = PAGE.marginX;
+  const y = doc.y;
+  const width = 499;
+  const max = Math.max(...rows.map((item) => item.value), 1);
+
+  doc.roundedRect(x, y, width, height, 6).fill(COLORS.softGray);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(10)
+    .fillColor(COLORS.navy)
+    .text(title, x + 14, y + 14, { width: width - 28 });
+
+  let rowY = y + 38;
+  rows.forEach((item) => {
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .fillColor(COLORS.ink)
+      .text(item.label, x + 14, rowY + 2, { width: 150 });
+    doc.roundedRect(x + 170, rowY + 4, 235, 9, 4).fill("#e7edf5");
+    doc
+      .roundedRect(x + 170, rowY + 4, Math.max(8, (item.value / max) * 235), 9, 4)
+      .fill(item.color);
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .fillColor(COLORS.muted)
+      .text(item.displayValue, x + 420, rowY + 2, { width: 60, align: "right" });
+    rowY += rowHeight;
+  });
+
+  doc.y = y + height + 14;
+}
+
+function budgetChart(doc: PdfDoc, proposal: Proposal) {
+  const items = [
+    { label: "Development", value: proposal.costEstimate.developmentCost, color: COLORS.teal },
+    { label: "Infrastructure", value: proposal.costEstimate.infrastructureCost, color: "#2f80ed" },
+    { label: "Licensing", value: proposal.costEstimate.licensingCost, color: COLORS.gold },
+    { label: "Support", value: proposal.costEstimate.supportCost, color: "#6f42c1" },
+    { label: "Contingency", value: proposal.costEstimate.contingencyCost, color: "#b42318" }
+  ].filter((item) => item.value > 0);
+
+  if (items.length === 0) {
+    return;
+  }
+
+  ensureSpace(doc, 132);
+  const x = PAGE.marginX;
+  const y = doc.y;
+  const width = 499;
+  const total = Math.max(1, proposal.costEstimate.totalBudget);
+
+  doc.roundedRect(x, y, width, 118, 6).fill(COLORS.softGray);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(10)
+    .fillColor(COLORS.navy)
+    .text("Cost Breakdown Visualization", x + 14, y + 14);
+
+  let currentX = x + 14;
+  items.forEach((item) => {
+    const segmentWidth = Math.max(8, (item.value / total) * (width - 28));
+    doc.rect(currentX, y + 42, segmentWidth, 18).fill(item.color);
+    currentX += segmentWidth;
+  });
+
+  let legendY = y + 74;
+  items.forEach((item, index) => {
+    const legendX = x + 14 + (index % 2) * 238;
+    if (index > 0 && index % 2 === 0) {
+      legendY += 18;
+    }
+
+    doc.circle(legendX + 4, legendY + 5, 4).fill(item.color);
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .fillColor(COLORS.ink)
+      .text(`${item.label}: ${money(item.value, proposal.costEstimate.currency)}`, legendX + 14, legendY, { width: 210 });
+  });
+
+  doc.y = y + 132;
+}
+
+function timelineChart(doc: PdfDoc, proposal: Proposal) {
+  if (proposal.timeline.phases.length === 0) {
+    return;
+  }
+
+  ensureSpace(doc, 126);
+  const x = PAGE.marginX;
+  const y = doc.y;
+  const width = 499;
+  const total = Math.max(1, proposal.timeline.phases.reduce((sum, phase) => sum + phase.weeks, 0));
+  const colors = [COLORS.teal, COLORS.gold, COLORS.navy, "#6f42c1", "#2f80ed"];
+
+  doc.roundedRect(x, y, width, 112, 6).fill(COLORS.softGray);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(10)
+    .fillColor(COLORS.navy)
+    .text("Phase Timeline", x + 14, y + 14);
+
+  let currentX = x + 14;
+  proposal.timeline.phases.forEach((phase, index) => {
+    const segmentWidth = Math.max(36, (phase.weeks / total) * (width - 28));
+    doc.rect(currentX, y + 42, segmentWidth, 16).fill(colors[index % colors.length]);
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(7)
+      .fillColor(COLORS.ink)
+      .text(`${phase.name} (${phase.weeks}w)`, currentX, y + 66, {
+        width: segmentWidth,
+        height: 34
+      });
+    currentX += segmentWidth;
+  });
+
+  doc.y = y + 126;
 }
 
 function table(
@@ -696,4 +970,8 @@ function first(items: string[] | undefined, fallback: string): string {
 
 function firstLine(value: string, fallback: string): string {
   return normalize(value).split("\n").find(Boolean) ?? fallback;
+}
+
+function roundOne(value: number): number {
+  return Math.round(value * 10) / 10;
 }

@@ -95,6 +95,7 @@ Focus on:
 - architecture
 - integrations
 - budget
+- buyer/client country, region, currency and any pricing instructions
 - timeline
 - staffing
 - evaluation criteria
@@ -104,6 +105,7 @@ Strict hallucination controls:
 
 - Do not invent client budgets, deadlines, dates, quantities or legal constraints.
 - If the RFP does not state a budget, put "Budget not specified in RFP" in budgetInformation.
+- If the RFP states currency, country, local procurement rules, or pricing format, include those exact facts in budgetInformation and constraints.
 - If the RFP does not state a deadline, put "Deadline not specified in RFP" in timelineInformation.
 - Separate facts found in the RFP from proposal recommendations.
 - Use concise, auditable phrases that can be traced back to the uploaded document.

@@ -10,6 +10,10 @@ import {
 } from "@/lib/document/rfp-analyser";
 import { renderMarkdown } from "@/lib/proposal/markdown";
 import { renderPdf } from "@/lib/proposal/pdf";
+import {
+  assertProposalQuality,
+  sanitizeProposalForClient
+} from "@/lib/proposal/quality";
 import { RfpAnalysis } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -126,9 +130,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const proposal = await new ProposalOrchestrator().run(
+    const proposal = sanitizeProposalForClient(await new ProposalOrchestrator().run(
       rfp
-    );
+    ));
+
+    assertProposalQuality(proposal);
 
     const markdown = renderMarkdown(
       proposal
