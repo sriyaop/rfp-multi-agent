@@ -1,6 +1,14 @@
 import { RfpAnalysis } from "@/lib/types";
 import { toUniqueItems } from "@/lib/utils";
 
+export interface DocumentExtractionResult {
+  text: string;
+  pageCount?: number;
+  characterCount: number;
+  quality: "good" | "weak" | "failed";
+  warnings: string[];
+}
+
 const SECTION_PATTERNS = {
   requirements: /(?:requirements?|shall|must|should|needs? to|functional|technical)/i,
   scope: /(?:scope|deliverables?|services?|implementation|migration|support)/i,
@@ -13,26 +21,69 @@ const SECTION_PATTERNS = {
  * Extracts normalized text from supported RFP upload formats.
  */
 export async function extractTextFromFile(file: File): Promise<string> {
+  const result = await extractDocumentFromFile(file);
+  return result.text;
+}
+
+/**
+ * Extracts document text together with quality metadata used to prevent empty-RFP hallucinations.
+ */
+export async function extractDocumentFromFile(file: File): Promise<DocumentExtractionResult> {
   const buffer = Buffer.from(await file.arrayBuffer());
   const name = file.name.toLowerCase();
+  let text = "";
+  let pageCount: number | undefined;
 
   if (name.endsWith(".pdf")) {
     const pdfParse = (await import("pdf-parse")).default;
     const result = await pdfParse(buffer);
-    return result.text;
-  }
-
-  if (name.endsWith(".docx")) {
+    text = result.text;
+    pageCount = result.numpages;
+  } else if (name.endsWith(".docx")) {
     const mammoth = await import("mammoth");
     const result = await mammoth.extractRawText({ buffer });
-    return result.value;
+    text = result.value;
+  } else if (name.endsWith(".txt") || file.type.startsWith("text/")) {
+    text = buffer.toString("utf-8");
+  } else {
+    throw new Error("Unsupported file type. Upload a PDF, DOCX, or TXT RFP.");
   }
 
-  if (name.endsWith(".txt") || file.type.startsWith("text/")) {
-    return buffer.toString("utf-8");
+  return assessExtraction(text, pageCount);
+}
+
+function assessExtraction(text: string, pageCount?: number): DocumentExtractionResult {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const characterCount = normalized.length;
+  const minimumCharacters = pageCount && pageCount > 5 ? 1000 : 400;
+  const warnings: string[] = [];
+
+  if (characterCount < minimumCharacters) {
+    warnings.push(
+      `Only ${characterCount} characters were extracted${pageCount ? ` from ${pageCount} page(s)` : ""}. The file may be scanned, image-based, protected, or unreadable by text extraction.`
+    );
   }
 
-  throw new Error("Unsupported file type. Upload a PDF, DOCX, or TXT RFP.");
+  if (pageCount && pageCount >= 10 && characterCount / pageCount < 150) {
+    warnings.push(
+      "Average extracted text per page is too low for reliable RFP analysis."
+    );
+  }
+
+  const quality =
+    characterCount < 100
+      ? "failed"
+      : warnings.length > 0
+      ? "weak"
+      : "good";
+
+  return {
+    text,
+    pageCount,
+    characterCount,
+    quality,
+    warnings
+  };
 }
 
 /**

@@ -2,13 +2,12 @@ import { BaseAgent } from "@/lib/agents/base";
 
 import {
   AgentOutput,
-  ProductPlan,
-  ResourcePlan,
   TimelinePlan,
   WorkflowState
 } from "@/lib/types";
 
 import { dateAfterWeeks } from "@/lib/utils";
+import { getProjectSignals } from "@/lib/agents/rfp-intelligence";
 
 export class TimelineAgent extends BaseAgent<TimelinePlan> {
 
@@ -23,28 +22,35 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
     state: WorkflowState
   ): Promise<AgentOutput<TimelinePlan>> {
 
-    const product =
-      state.outputs.productManager
-        ?.findings as ProductPlan;
+    let durationWeeks =
+      getProjectSignals(state.rfp)
+        .suggestedTimelineWeeks;
 
-    const resource =
-      state.outputs.resourcePlanning
-        ?.findings as ResourcePlan;
+    durationWeeks =
+      Math.max(
+        12,
+        durationWeeks
+      );
 
-    const featureCount =
-      product.features.length;
 
-    let durationWeeks = 12;
+    const signals =
+      getProjectSignals(state.rfp);
 
-    if (featureCount > 10) {
-      durationWeeks = 20;
-    }
-
-    if (featureCount > 15) {
-      durationWeeks = 28;
-    }
-
-    const phases = [
+    const phases = signals.domain === "erp"
+      ? [
+        { name: "Discovery & Process Mapping", weeks: 5, output: "Current/future-state process design for finance, HR, payroll, reporting and approval workflows" },
+        { name: "ERP Configuration & Integrations", weeks: Math.max(10, durationWeeks - 20), output: "Configured ERP modules, identity access, workflow rules and external interfaces" },
+        { name: "Data Migration & Reporting", weeks: 5, output: "Validated migrated financial/HR data, reconciliations, dashboards and reports" },
+        { name: "UAT, Training & Go Live", weeks: 10, output: "Scenario testing, role-based training, cutover planning and production enablement" }
+      ]
+      : signals.domain === "website"
+      ? [
+        { name: "Discovery, Content Audit & UX", weeks: 5, output: "Validated information architecture and design system" },
+        { name: "CMS Implementation", weeks: Math.max(8, durationWeeks - 18), output: "Authoring workflows, templates and integrations" },
+        { name: "Accessibility, Search & QA", weeks: 6, output: "WCAG validation, content QA and search tuning" },
+        { name: "Launch Readiness", weeks: 7, output: "Deployment, training and production launch" }
+      ]
+      : [
       {
         name: "Discovery",
         weeks: 2,
@@ -76,7 +82,7 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
       confidence: 0.94,
 
       assumptions: [
-        "Timeline based on feature count."
+        "Timeline derived from RFP workload categories: discovery, configuration/build, integrations, migration/reporting, testing, training and go-live readiness."
       ],
 
       findings: {
@@ -90,14 +96,44 @@ export class TimelineAgent extends BaseAgent<TimelinePlan> {
         phases,
 
         milestones: [
-          "Requirements Approved",
-          "Architecture Approved",
+          signals.domain === "erp" ? "Process Design Approved" : "Requirements Approved",
+          signals.domain === "website" ? "UX and CMS Design Approved" : "Architecture Approved",
           "Build Complete",
           "Go Live"
-        ]
+        ],
+
+        rationale:
+          buildTimelineRationale(signals)
       },
 
       reviewNotes: []
     };
   }
+}
+
+function buildTimelineRationale(
+  signals: ReturnType<typeof getProjectSignals>
+): string[] {
+  if (signals.domain === "erp") {
+    return [
+      "Discovery includes process mapping because ERP success depends on confirming current and future-state finance, HR, payroll, purchasing and reporting workflows.",
+      "Configuration receives the largest allocation because ERP modules, approval routing, security roles and integrations must be configured and validated together.",
+      "Data migration and reporting require a dedicated phase so legacy accounting, spreadsheet and HR data can be cleansed, reconciled and validated.",
+      "UAT, training and go-live require meaningful time because business users must validate payroll, finance, reporting and mobile/field workflows before production cutover."
+    ];
+  }
+
+  if (signals.domain === "website") {
+    return [
+      "Discovery includes content audit and UX validation because website redesign work depends on content ownership, navigation and accessibility decisions.",
+      "Implementation includes CMS templates, authoring workflows, search and integrations.",
+      "Accessibility, content QA and launch readiness are separated to reduce compliance and production-launch risk."
+    ];
+  }
+
+  return [
+    "Discovery establishes requirements and acceptance criteria before build begins.",
+    "Implementation duration reflects functional scope, integrations, security needs and testing effort.",
+    "Testing and go-live include acceptance, release readiness and operational handover."
+  ];
 }

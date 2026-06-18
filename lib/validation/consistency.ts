@@ -19,7 +19,7 @@ export function runConsistencyChecks(state: WorkflowState): ConsistencyCheck[] {
 
   if (resource && cost) {
     const costPerPersonMonth = cost.developmentCost / resource.effortPersonMonths;
-    if (costPerPersonMonth < 8000) {
+    if (costPerPersonMonth < minimumMonthlyRate(cost.currency)) {
       checks.push({
         severity: "critical",
         category: "Budget",
@@ -54,4 +54,17 @@ export function calculateConfidence(state: WorkflowState): number {
   const outputs = Object.values(state.outputs);
   const total = outputs.reduce((sum, output) => sum + output.confidence, 0);
   return Math.round((total / Math.max(1, outputs.length)) * 100);
+}
+
+function minimumMonthlyRate(currency: string): number {
+  const thresholds: Record<string, number> = {
+    INR: 180000,
+    GBP: 6000,
+    EUR: 7000,
+    CAD: 10000,
+    AUD: 11000,
+    USD: 8000
+  };
+
+  return thresholds[currency] ?? thresholds.USD;
 }

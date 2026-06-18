@@ -11,6 +11,7 @@ import {
   RfpAnalysis,
   TimelinePlan
 } from "@/lib/types";
+import { money } from "@/lib/utils";
 
 export class ProposalOrchestrator {
 
@@ -133,7 +134,7 @@ export class ProposalOrchestrator {
           memory.addMessage(
             "costEstimation",
             "ceo",
-            `Estimated project budget of $${cost.totalBudget.toLocaleString()}.`
+            `Estimated project budget of ${money(cost.totalBudget, cost.currency)}.`
           );
 
           break;

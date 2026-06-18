@@ -2,11 +2,11 @@ import { BaseAgent } from "@/lib/agents/base";
 
 import {
   AgentOutput,
-  ProductPlan,
   ResourcePlan,
-  TechnicalPlan,
   WorkflowState
 } from "@/lib/types";
+import { getProjectSignals } from "@/lib/agents/rfp-intelligence";
+import { roundOne } from "@/lib/utils";
 
 export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
 
@@ -21,53 +21,161 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
     state: WorkflowState
   ): Promise<AgentOutput<ResourcePlan>> {
 
-    const product =
-      state.outputs.productManager
-        ?.findings as ProductPlan;
+    const signals =
+      getProjectSignals(state.rfp);
 
-    const technical =
-      state.outputs.cto
-        ?.findings as TechnicalPlan;
+    const durationMonths =
+      roundOne(
+        Math.max(
+          3,
+          signals.suggestedTimelineWeeks / 4
+        )
+      );
 
-    const featureCount =
-      product.features.length;
+    const deliveryLoad =
+      signals.requirementCount +
+      signals.integrationCount * 2 +
+      signals.dataMigrationCount * 2 +
+      signals.reportingCount +
+      signals.workflowCount +
+      signals.complianceCount;
 
-    const integrationCount =
-      technical.integrations.length;
+    const developerFte =
+      roundOne(
+        Math.min(
+          6,
+          Math.max(
+            1,
+            deliveryLoad / 12
+          )
+        )
+      );
 
-    let teamComposition;
+    const qaFte =
+      roundOne(
+        Math.min(
+          3,
+          Math.max(
+            0.5,
+            developerFte * 0.45 + signals.complianceCount * 0.08
+          )
+        )
+      );
 
-    if (
-      featureCount > 15 ||
-      integrationCount > 3
-    ) {
-      teamComposition = [
-        { role: "Project Manager", fte: 1, months: 8 },
-        { role: "Solution Architect", fte: 1, months: 6 },
-        { role: "Senior Developer", fte: 3, months: 8 },
-        { role: "QA Engineer", fte: 2, months: 6 },
-        { role: "DevOps Engineer", fte: 1, months: 4 }
-      ];
-    } else {
-      teamComposition = [
-        { role: "Project Manager", fte: 1, months: 6 },
-        { role: "Developer", fte: 2, months: 6 },
-        { role: "QA Engineer", fte: 1, months: 4 }
-      ];
-    }
+    const teamComposition = [
+      {
+        role:
+          signals.complexity === "High"
+            ? "Program Manager"
+            : "Project Manager",
+        fte: signals.complexity === "High" ? 1 : 0.75,
+        months: durationMonths
+      },
+      {
+        role: "Business Analyst / Product Owner",
+        fte: roundOne(Math.min(2, Math.max(0.5, signals.requirementCount / 18))),
+        months: roundOne(Math.max(2.5, durationMonths * 0.55))
+      },
+      {
+        role:
+          signals.domain === "erp"
+            ? "ERP Solution Architect"
+            : signals.domain === "website"
+            ? "CMS / Web Architect"
+            : signals.domain === "mobile"
+            ? "Mobile Solution Architect"
+            : "Solution Architect",
+        fte: signals.complexity === "Low" ? 0.5 : 1,
+        months: roundOne(Math.max(2.5, durationMonths * 0.55))
+      },
+      {
+        role:
+          signals.domain === "erp"
+            ? "ERP Functional Consultant"
+            : signals.domain === "website"
+            ? "CMS / Frontend Developer"
+            : signals.domain === "mobile"
+            ? "Mobile Developer"
+            : "Application Developer",
+        fte: developerFte,
+        months: roundOne(Math.max(3, durationMonths * 0.72))
+      },
+      ...(signals.integrationCount > 0
+        ? [
+            {
+              role: "Integration Engineer",
+              fte: roundOne(Math.min(2.5, Math.max(0.5, signals.integrationCount / 4))),
+              months: roundOne(Math.max(2, durationMonths * 0.55))
+            }
+          ]
+        : []),
+      ...(signals.dataMigrationCount > 0
+        ? [
+            {
+              role: "Data Migration Specialist",
+              fte: roundOne(Math.min(2, Math.max(0.5, signals.dataMigrationCount / 3))),
+              months: roundOne(Math.max(2, durationMonths * 0.45))
+            }
+          ]
+        : []),
+      ...(signals.reportingCount > 0 || signals.domain === "data"
+        ? [
+            {
+              role: "Reporting / BI Specialist",
+              fte: roundOne(Math.min(1.5, Math.max(0.5, signals.reportingCount / 4))),
+              months: roundOne(Math.max(2, durationMonths * 0.45))
+            }
+          ]
+        : []),
+      ...(signals.userExperienceCount > 0 || signals.domain === "website" || signals.domain === "mobile"
+        ? [
+            {
+              role: "UX/UI Designer",
+              fte: roundOne(signals.domain === "website" ? 1 : 0.5),
+              months: roundOne(Math.max(2, durationMonths * 0.35))
+            }
+          ]
+        : []),
+      {
+        role: "QA Engineer",
+        fte: qaFte,
+        months: roundOne(Math.max(2.5, durationMonths * 0.55))
+      },
+      {
+        role: "DevOps / Release Engineer",
+        fte: roundOne(signals.complexity === "Low" ? 0.4 : 0.75),
+        months: roundOne(Math.max(1.5, durationMonths * 0.35))
+      },
+      ...(signals.trainingCount > 0
+        ? [
+            {
+              role: "Training & Change Management Lead",
+              fte: 0.5,
+              months: roundOne(Math.max(1.5, durationMonths * 0.3))
+            }
+          ]
+        : [])
+    ];
 
     const totalFte =
+      roundOne(
       teamComposition.reduce(
         (sum, item) => sum + item.fte,
         0
+      )
       );
 
     const effortPersonMonths =
+      roundOne(
       teamComposition.reduce(
         (sum, item) =>
           sum + item.fte * item.months,
         0
+      )
       );
+
+    const estimatedHours =
+      Math.round(effortPersonMonths * 160);
 
     return {
       agent: this.role,
@@ -77,13 +185,14 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
       confidence: 0.95,
 
       assumptions: [
-        "Resource plan based on scope and architecture complexity."
+        "Resource plan calculated from the RFP's functional modules, integration needs, migration scope, reporting requirements, compliance obligations, training needs and support expectations."
       ],
 
       findings: {
         teamComposition,
         totalFte,
         effortPersonMonths,
+        estimatedHours,
 
         allocationPlan: [
           "Discovery & Design",
@@ -93,15 +202,18 @@ export class ResourcePlanningAgent extends BaseAgent<ResourcePlan> {
         ],
 
         staffingStrategy: [
-          "Dedicated project team",
-          "Shared governance model"
+          `The team is sized for a ${signals.complexity.toLowerCase()} delivery profile with functional, technical and operational workstreams running in parallel.`,
+          `Integration, migration, reporting and compliance requirements drive the need for specialist coverage beyond a basic implementation team.`,
+          `Staffing emphasizes ${signals.domain === "erp" ? "ERP functional coverage, data migration and integrations" : signals.domain === "website" ? "UX, CMS, accessibility and content delivery" : signals.domain === "mobile" ? "mobile experience, API integration and release management" : "application delivery, QA and release governance"}.`
         ],
 
         criticalSkills: [
-          "Full Stack Development",
+          signals.domain === "erp" ? "ERP implementation" : signals.domain === "website" ? "CMS/web accessibility" : "Full Stack Development",
           "Architecture",
           "QA",
-          "DevOps"
+          signals.integrationCount > 0 ? "Integration engineering" : "DevOps",
+          signals.dataMigrationCount > 0 ? "Data migration" : "Release management",
+          signals.reportingCount > 0 ? "Reporting/BI" : "Stakeholder communication"
         ],
 
         hiringRisks: [

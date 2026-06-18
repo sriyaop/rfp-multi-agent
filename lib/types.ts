@@ -130,6 +130,8 @@ export interface ResourcePlan {
 
   effortPersonMonths: number;
 
+  estimatedHours: number;
+
   allocationPlan: string[];
 
   staffingStrategy: string[];
@@ -153,7 +155,7 @@ export interface CostPlan {
 
   totalBudget: number;
 
-  currency: "USD";
+  currency: string;
 
   costDrivers: string[];
 
@@ -167,6 +169,7 @@ export interface TimelinePlan {
   estimatedCompletionDate: string;
   phases: Array<{ name: string; weeks: number; output: string }>;
   milestones: string[];
+  rationale: string[];
 }
 
 export interface RiskPlan {
